@@ -34,7 +34,7 @@ export const runGatewayUpdate = vi.fn().mockResolvedValue({
 }) as unknown as MockFn;
 export const migrateLegacyConfig = vi.fn((raw: unknown) => ({
   config: raw as Record<string, unknown>,
-  changes: ["Moved routing.allowFrom → channels.whatsapp.allowFrom."],
+  changes: ["Moved routing.allowFrom → channels.telegram.allowFrom."],
 })) as unknown as MockFn;
 
 export const runExec = vi.fn().mockResolvedValue({
@@ -110,16 +110,6 @@ export const detectLegacyStateMigrations = vi.fn().mockResolvedValue({
     legacyDir: "/tmp/state/agent",
     targetDir: "/tmp/state/agents/main/agent",
     hasLegacy: false,
-  },
-  whatsappAuth: {
-    legacyDir: "/tmp/oauth",
-    targetDir: "/tmp/oauth/whatsapp/default",
-    hasLegacy: false,
-  },
-  pairingAllowFrom: {
-    legacyTelegramPath: "/tmp/oauth/telegram-allowFrom.json",
-    targetTelegramPath: "/tmp/oauth/telegram-default-allowFrom.json",
-    hasLegacyTelegram: false,
   },
   preview: [],
 }) as unknown as MockFn;
@@ -226,11 +216,6 @@ vi.mock("../daemon/service.js", () => ({
   }),
 }));
 
-vi.mock("../pairing/pairing-store.js", () => ({
-  readChannelAllowFromStore: vi.fn().mockResolvedValue([]),
-  upsertChannelPairingRequest: vi.fn().mockResolvedValue({ code: "000000", created: false }),
-}));
-
 vi.mock("../telegram/token.js", () => ({
   resolveTelegramToken: vi.fn(() => ({ token: "", source: "none" })),
 }));
@@ -331,16 +316,6 @@ export async function arrangeLegacyStateMigrationTest(): Promise<{
       targetDir: "/tmp/state/agents/main/agent",
       hasLegacy: false,
     },
-    whatsappAuth: {
-      legacyDir: "/tmp/oauth",
-      targetDir: "/tmp/oauth/whatsapp/default",
-      hasLegacy: false,
-    },
-    pairingAllowFrom: {
-      legacyTelegramPath: "/tmp/oauth/telegram-allowFrom.json",
-      targetTelegramPath: "/tmp/oauth/telegram-default-allowFrom.json",
-      hasLegacyTelegram: false,
-    },
     preview: ["- Legacy sessions detected"],
   });
   runLegacyStateMigrations.mockResolvedValueOnce({
@@ -396,7 +371,7 @@ beforeEach(() => {
   ensureAuthProfileStore.mockReset().mockReturnValue({ version: 1, profiles: {} });
   migrateLegacyConfig.mockReset().mockImplementation((raw: unknown) => ({
     config: raw as Record<string, unknown>,
-    changes: ["Moved routing.allowFrom → channels.whatsapp.allowFrom."],
+    changes: ["Moved routing.allowFrom → channels.telegram.allowFrom."],
   }));
   findLegacyGatewayServices.mockReset().mockResolvedValue([]);
   uninstallLegacyGatewayServices.mockReset().mockResolvedValue([]);

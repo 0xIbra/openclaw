@@ -4,7 +4,6 @@ import {
   collectTelegramStatusIssues,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
-  formatPairingApproveHint,
   getChatChannelMeta,
   listTelegramAccountIds,
   listTelegramDirectoryGroupsFromConfig,
@@ -13,7 +12,6 @@ import {
   migrateBaseNameToDefaultAccount,
   normalizeAccountId,
   normalizeTelegramMessagingTarget,
-  PAIRING_APPROVED_MESSAGE,
   parseTelegramReplyToMessageId,
   parseTelegramThreadId,
   resolveDefaultTelegramAccountId,
@@ -54,23 +52,6 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
     quickstartAllowFrom: true,
   },
   onboarding: telegramOnboardingAdapter,
-  pairing: {
-    idLabel: "telegramUserId",
-    normalizeAllowEntry: (entry) => entry.replace(/^(telegram|tg):/i, ""),
-    notifyApproval: async ({ cfg, id }) => {
-      const { token } = getTelegramRuntime().channel.telegram.resolveTelegramToken(cfg);
-      if (!token) {
-        throw new Error("telegram token not configured");
-      }
-      await getTelegramRuntime().channel.telegram.sendMessageTelegram(
-        id,
-        PAIRING_APPROVED_MESSAGE,
-        {
-          token,
-        },
-      );
-    },
-  },
   capabilities: {
     chatTypes: ["direct", "group", "channel", "thread"],
     reactions: true,
@@ -128,11 +109,11 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
         ? `channels.telegram.accounts.${resolvedAccountId}.`
         : "channels.telegram.";
       return {
-        policy: account.config.dmPolicy ?? "pairing",
+        policy: account.config.dmPolicy ?? "allowlist",
         allowFrom: account.config.allowFrom ?? [],
         policyPath: `${basePath}dmPolicy`,
         allowFromPath: basePath,
-        approveHint: formatPairingApproveHint("telegram"),
+        approveHint: "Add authorized IDs to channels.telegram.allowFrom.",
         normalizeEntry: (raw) => raw.replace(/^(telegram|tg):/i, ""),
       };
     },

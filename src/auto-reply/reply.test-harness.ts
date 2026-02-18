@@ -88,7 +88,7 @@ export function makeReplyConfig(home: string) {
       },
     },
     channels: {
-      whatsapp: {
+      telegram: {
         allowFrom: ["*"],
       },
     },

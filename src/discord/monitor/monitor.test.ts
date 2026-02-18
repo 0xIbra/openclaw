@@ -127,7 +127,7 @@ describe("agent components", () => {
     const button = createAgentComponentButton({
       cfg: createCfg(),
       accountId: "default",
-      dmPolicy: "pairing",
+      dmPolicy: "allowlist",
     });
     const { interaction, defer, reply } = createDmButtonInteraction();
 
@@ -135,7 +135,9 @@ describe("agent components", () => {
 
     expect(defer).toHaveBeenCalledWith({ ephemeral: true });
     expect(reply).toHaveBeenCalledTimes(1);
-    expect(reply.mock.calls[0]?.[0]?.content).toContain("Pairing is not available.");
+    expect(reply.mock.calls[0]?.[0]?.content).toContain(
+      "You are not authorized to use this button.",
+    );
     expect(enqueueSystemEventMock).not.toHaveBeenCalled();
   });
 

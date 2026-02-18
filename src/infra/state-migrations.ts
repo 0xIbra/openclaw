@@ -16,7 +16,6 @@ import { canonicalizeMainSessionAlias } from "../config/sessions/main-session.js
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   buildAgentMainSessionKey,
-  DEFAULT_ACCOUNT_ID,
   DEFAULT_MAIN_KEY,
   normalizeAgentId,
 } from "../routing/session-key.js";
@@ -25,7 +24,6 @@ import {
   ensureDir,
   existsDir,
   fileExists,
-  isLegacyWhatsAppAuthFile,
   readSessionStoreJson5,
   type SessionEntryLike,
   safeReadDir,
@@ -50,16 +48,6 @@ export type LegacyStateDetection = {
     targetDir: string;
     hasLegacy: boolean;
   };
-  whatsappAuth: {
-    legacyDir: string;
-    targetDir: string;
-    hasLegacy: boolean;
-  };
-  pairingAllowFrom: {
-    legacyTelegramPath: string;
-    targetTelegramPath: string;
-    hasLegacyTelegram: boolean;
-  };
   preview: string[];
 };
 
@@ -80,21 +68,7 @@ function isLegacyGroupKey(key: string): boolean {
   if (!trimmed) {
     return false;
   }
-  if (trimmed.startsWith("group:")) {
-    return true;
-  }
-  const lower = trimmed.toLowerCase();
-  if (!lower.includes("@g.us")) {
-    return false;
-  }
-  // Legacy WhatsApp group keys: bare JID or "whatsapp:<jid>" without explicit ":group:" kind.
-  if (!trimmed.includes(":")) {
-    return true;
-  }
-  if (lower.startsWith("whatsapp:") && !trimmed.includes(":group:")) {
-    return true;
-  }
-  return false;
+  return trimmed.startsWith("group:");
 }
 
 function canonicalizeSessionKeyForAgent(params: {
@@ -133,18 +107,7 @@ function canonicalizeSessionKeyForAgent(params: {
     if (!id) {
       return raw;
     }
-    const channel = id.toLowerCase().includes("@g.us") ? "whatsapp" : "unknown";
-    return `agent:${agentId}:${channel}:group:${id}`.toLowerCase();
-  }
-  if (!raw.includes(":") && raw.toLowerCase().includes("@g.us")) {
-    return `agent:${agentId}:whatsapp:group:${raw}`.toLowerCase();
-  }
-  if (raw.toLowerCase().startsWith("whatsapp:") && raw.toLowerCase().includes("@g.us")) {
-    const remainder = raw.slice("whatsapp:".length).trim();
-    const cleaned = remainder.replace(/^group:/i, "").trim();
-    if (cleaned && !isSurfaceGroupKey(raw)) {
-      return `agent:${agentId}:whatsapp:group:${cleaned}`.toLowerCase();
-    }
+    return `agent:${agentId}:telegram:group:${id}`.toLowerCase();
   }
   if (isSurfaceGroupKey(raw)) {
     return `agent:${agentId}:${raw}`.toLowerCase();
@@ -613,18 +576,6 @@ export async function detectLegacyStateMigrations(params: {
   const targetAgentDir = path.join(stateDir, "agents", targetAgentId, "agent");
   const hasLegacyAgentDir = existsDir(legacyAgentDir);
 
-  const targetWhatsAppAuthDir = path.join(oauthDir, "whatsapp", DEFAULT_ACCOUNT_ID);
-  const hasLegacyWhatsAppAuth =
-    fileExists(path.join(oauthDir, "creds.json")) &&
-    !fileExists(path.join(targetWhatsAppAuthDir, "creds.json"));
-  const legacyTelegramAllowFromPath = path.join(oauthDir, "telegram-allowFrom.json");
-  const targetTelegramAllowFromPath = path.join(
-    oauthDir,
-    `telegram-${DEFAULT_ACCOUNT_ID}-allowFrom.json`,
-  );
-  const hasLegacyTelegramAllowFrom =
-    fileExists(legacyTelegramAllowFromPath) && !fileExists(targetTelegramAllowFromPath);
-
   const preview: string[] = [];
   if (hasLegacySessions) {
     preview.push(`- Sessions: ${sessionsLegacyDir} → ${sessionsTargetDir}`);
@@ -634,14 +585,6 @@ export async function detectLegacyStateMigrations(params: {
   }
   if (hasLegacyAgentDir) {
     preview.push(`- Agent dir: ${legacyAgentDir} → ${targetAgentDir}`);
-  }
-  if (hasLegacyWhatsAppAuth) {
-    preview.push(`- WhatsApp auth: ${oauthDir} → ${targetWhatsAppAuthDir} (keep oauth.json)`);
-  }
-  if (hasLegacyTelegramAllowFrom) {
-    preview.push(
-      `- Telegram pairing allowFrom: ${legacyTelegramAllowFromPath} → ${targetTelegramAllowFromPath}`,
-    );
   }
 
   return {
@@ -662,16 +605,6 @@ export async function detectLegacyStateMigrations(params: {
       legacyDir: legacyAgentDir,
       targetDir: targetAgentDir,
       hasLegacy: hasLegacyAgentDir,
-    },
-    whatsappAuth: {
-      legacyDir: oauthDir,
-      targetDir: targetWhatsAppAuthDir,
-      hasLegacy: hasLegacyWhatsAppAuth,
-    },
-    pairingAllowFrom: {
-      legacyTelegramPath: legacyTelegramAllowFromPath,
-      targetTelegramPath: targetTelegramAllowFromPath,
-      hasLegacyTelegram: hasLegacyTelegramAllowFrom,
     },
     preview,
   };
@@ -851,66 +784,6 @@ export async function migrateLegacyAgentDir(
   return { changes, warnings };
 }
 
-async function migrateLegacyWhatsAppAuth(
-  detected: LegacyStateDetection,
-): Promise<{ changes: string[]; warnings: string[] }> {
-  const changes: string[] = [];
-  const warnings: string[] = [];
-  if (!detected.whatsappAuth.hasLegacy) {
-    return { changes, warnings };
-  }
-
-  ensureDir(detected.whatsappAuth.targetDir);
-
-  const entries = safeReadDir(detected.whatsappAuth.legacyDir);
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    if (entry.name === "oauth.json") {
-      continue;
-    }
-    if (!isLegacyWhatsAppAuthFile(entry.name)) {
-      continue;
-    }
-    const from = path.join(detected.whatsappAuth.legacyDir, entry.name);
-    const to = path.join(detected.whatsappAuth.targetDir, entry.name);
-    if (fileExists(to)) {
-      continue;
-    }
-    try {
-      fs.renameSync(from, to);
-      changes.push(`Moved WhatsApp auth ${entry.name} → whatsapp/default`);
-    } catch (err) {
-      warnings.push(`Failed moving ${from}: ${String(err)}`);
-    }
-  }
-
-  return { changes, warnings };
-}
-
-async function migrateLegacyTelegramPairingAllowFrom(
-  detected: LegacyStateDetection,
-): Promise<{ changes: string[]; warnings: string[] }> {
-  const changes: string[] = [];
-  const warnings: string[] = [];
-  if (!detected.pairingAllowFrom.hasLegacyTelegram) {
-    return { changes, warnings };
-  }
-
-  const legacyPath = detected.pairingAllowFrom.legacyTelegramPath;
-  const targetPath = detected.pairingAllowFrom.targetTelegramPath;
-  try {
-    ensureDir(path.dirname(targetPath));
-    fs.copyFileSync(legacyPath, targetPath);
-    changes.push(`Copied Telegram pairing allowFrom → ${targetPath}`);
-  } catch (err) {
-    warnings.push(`Failed migrating Telegram pairing allowFrom (${legacyPath}): ${String(err)}`);
-  }
-
-  return { changes, warnings };
-}
-
 export async function runLegacyStateMigrations(params: {
   detected: LegacyStateDetection;
   now?: () => number;
@@ -919,21 +792,9 @@ export async function runLegacyStateMigrations(params: {
   const detected = params.detected;
   const sessions = await migrateLegacySessions(detected, now);
   const agentDir = await migrateLegacyAgentDir(detected, now);
-  const whatsappAuth = await migrateLegacyWhatsAppAuth(detected);
-  const telegramPairingAllowFrom = await migrateLegacyTelegramPairingAllowFrom(detected);
   return {
-    changes: [
-      ...sessions.changes,
-      ...agentDir.changes,
-      ...whatsappAuth.changes,
-      ...telegramPairingAllowFrom.changes,
-    ],
-    warnings: [
-      ...sessions.warnings,
-      ...agentDir.warnings,
-      ...whatsappAuth.warnings,
-      ...telegramPairingAllowFrom.warnings,
-    ],
+    changes: [...sessions.changes, ...agentDir.changes],
+    warnings: [...sessions.warnings, ...agentDir.warnings],
   };
 }
 

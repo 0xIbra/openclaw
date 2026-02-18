@@ -177,7 +177,7 @@ export type PluginCommandHandler = (
  * Definition for a plugin-registered command.
  */
 export type OpenClawPluginCommandDefinition = {
-  /** Command name without leading slash (e.g., "tts") */
+  /** Command name without leading slash (e.g., "help") */
   name: string;
   /** Description shown in /help and command menus */
   description: string;

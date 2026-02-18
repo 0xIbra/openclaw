@@ -70,9 +70,9 @@ export function registerDirectoryCli(program: Command) {
       "after",
       () =>
         `\n${theme.heading("Examples:")}\n${formatHelpExamples([
-          ["openclaw directory self --channel slack", "Show the connected account identity."],
+          ["openclaw directory self --channel discord", "Show the connected account identity."],
           [
-            'openclaw directory peers list --channel slack --query "alice"',
+            'openclaw directory peers list --channel discord --query "alice"',
             "Search contact/user IDs by name.",
           ],
           ["openclaw directory groups list --channel discord", "List available groups/channels."],

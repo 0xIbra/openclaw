@@ -340,7 +340,7 @@ export function pruneHistoryForContextShare(params: {
     const [dropped, ...rest] = chunks;
     const flatRest = rest.flat();
 
-    // After dropping a chunk, repair tool_use/tool_result pairing to handle
+    // After dropping a chunk, repair tool_use/tool_result alignment to handle
     // orphaned tool_results (whose tool_use was in the dropped chunk).
     // repairToolUseResultPairing drops orphaned tool_results, preventing
     // "unexpected tool_use_id" errors from Anthropic's API.

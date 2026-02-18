@@ -22,17 +22,7 @@ export type HookMappingConfig = {
   deliver?: boolean;
   /** DANGEROUS: Disable external content safety wrapping for this hook. */
   allowUnsafeExternalContent?: boolean;
-  channel?:
-    | "last"
-    | "whatsapp"
-    | "telegram"
-    | "discord"
-    | "irc"
-    | "googlechat"
-    | "slack"
-    | "signal"
-    | "imessage"
-    | "msteams";
+  channel?: "last" | "telegram" | "discord" | "irc" | "msteams";
   to?: string;
   /** Override model for this hook (provider/model or alias). */
   model?: string;

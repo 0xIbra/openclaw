@@ -136,7 +136,7 @@ export const ReplyToModeSchema = z.union([z.literal("off"), z.literal("first"), 
 //   - .default("allowlist") ensures runtime always resolves to "allowlist" if not provided
 export const GroupPolicySchema = z.enum(["open", "disabled", "allowlist"]);
 
-export const DmPolicySchema = z.enum(["pairing", "allowlist", "open", "disabled"]);
+export const DmPolicySchema = z.enum(["allowlist", "open", "disabled"]);
 
 export const BlockStreamingCoalesceSchema = z
   .object({
@@ -344,14 +344,10 @@ export const RetryConfigSchema = z
 
 export const QueueModeBySurfaceSchema = z
   .object({
-    whatsapp: QueueModeSchema.optional(),
     telegram: QueueModeSchema.optional(),
     discord: QueueModeSchema.optional(),
     irc: QueueModeSchema.optional(),
-    slack: QueueModeSchema.optional(),
     mattermost: QueueModeSchema.optional(),
-    signal: QueueModeSchema.optional(),
-    imessage: QueueModeSchema.optional(),
     msteams: QueueModeSchema.optional(),
     webchat: QueueModeSchema.optional(),
   })

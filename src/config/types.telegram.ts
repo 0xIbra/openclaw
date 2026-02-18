@@ -56,7 +56,7 @@ export type TelegramAccountConfig = {
   configWrites?: boolean;
   /**
    * Controls how Telegram direct chats (DMs) are handled:
-   * - "pairing" (default): unknown senders get a pairing code; owner must approve
+   * - "allowlist" (default): unknown senders are denied unless explicitly allowlisted
    * - "allowlist": only allow senders in allowFrom (or paired allow store)
    * - "open": allow all inbound DMs (requires allowFrom to include "*")
    * - "disabled": ignore all inbound DMs

@@ -254,7 +254,7 @@ export const buildTelegramMessageContext = async ({
     }
   };
 
-  // DM access control (secure defaults): "pairing" (default) / "allowlist" / "open" / "disabled"
+  // DM access control (secure defaults): "allowlist" (default) / "open" / "disabled"
   if (!isGroup) {
     if (dmPolicy === "disabled") {
       return null;
@@ -275,20 +275,17 @@ export const buildTelegramMessageContext = async ({
       const allowed =
         effectiveDmAllow.hasWildcard || (effectiveDmAllow.hasEntries && allowMatch.allowed);
       if (!allowed) {
-        if (dmPolicy === "pairing") {
-          try {
-            await withTelegramApiErrorLogging({
-              operation: "sendMessage",
-              fn: () => bot.api.sendMessage(chatId, "Pairing is not available."),
-            });
-          } catch (err) {
-            logVerbose(`telegram unauthorized DM reply failed for chat ${chatId}: ${String(err)}`);
-          }
-        } else {
-          logVerbose(
-            `Blocked unauthorized telegram sender ${candidate} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
-          );
+        try {
+          await withTelegramApiErrorLogging({
+            operation: "sendMessage",
+            fn: () => bot.api.sendMessage(chatId, "You are not authorized to message this bot."),
+          });
+        } catch (err) {
+          logVerbose(`telegram unauthorized DM reply failed for chat ${chatId}: ${String(err)}`);
         }
+        logVerbose(
+          `Blocked unauthorized telegram sender ${candidate} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
+        );
         return null;
       }
     }

@@ -10,9 +10,6 @@ function resolveAutoDefault(providerId?: ChannelId): boolean {
   if (id === "discord" || id === "telegram") {
     return true;
   }
-  if (id === "slack") {
-    return false;
-  }
   return false;
 }
 

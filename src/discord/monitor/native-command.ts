@@ -601,7 +601,7 @@ async function dispatchDiscordCommandInteraction(params: {
     }
   }
   const dmEnabled = discordConfig?.dm?.enabled ?? true;
-  const dmPolicy = discordConfig?.dmPolicy ?? discordConfig?.dm?.policy ?? "pairing";
+  const dmPolicy = discordConfig?.dmPolicy ?? discordConfig?.dm?.policy ?? "allowlist";
   let commandAuthorized = true;
   if (isDirectMessage) {
     if (!dmEnabled || dmPolicy === "disabled") {
@@ -622,11 +622,7 @@ async function dispatchDiscordCommandInteraction(params: {
         : false;
       if (!permitted) {
         commandAuthorized = false;
-        if (dmPolicy === "pairing") {
-          await respond("Pairing is not available.", { ephemeral: true });
-        } else {
-          await respond("You are not authorized to use this command.", { ephemeral: true });
-        }
+        await respond("You are not authorized to use this command.", { ephemeral: true });
         return;
       }
       commandAuthorized = true;

@@ -19,7 +19,7 @@ import { normalizeReplyPayload } from "./normalize-reply.js";
 export type RouteReplyParams = {
   /** The reply payload to send. */
   payload: ReplyPayload;
-  /** The originating channel type (telegram, slack, etc). */
+  /** The originating channel type (telegram, discord, etc). */
   channel: OriginatingChannelType;
   /** The destination chat/channel/user ID. */
   to: string;
@@ -109,10 +109,8 @@ export async function routeReply(params: RouteReplyParams): Promise<RouteReplyRe
     return { ok: false, error: "Reply routing aborted" };
   }
 
-  const resolvedReplyToId =
-    replyToId ??
-    (channelId === "slack" && threadId != null && threadId !== "" ? String(threadId) : undefined);
-  const resolvedThreadId = channelId === "slack" ? null : (threadId ?? null);
+  const resolvedReplyToId = replyToId;
+  const resolvedThreadId = threadId ?? null;
 
   try {
     // Provider docking: this is an execution boundary (we're about to send).

@@ -51,13 +51,9 @@ export const HookMappingSchema = z
     channel: z
       .union([
         z.literal("last"),
-        z.literal("whatsapp"),
         z.literal("telegram"),
         z.literal("discord"),
         z.literal("irc"),
-        z.literal("slack"),
-        z.literal("signal"),
-        z.literal("imessage"),
         z.literal("msteams"),
       ])
       .optional(),

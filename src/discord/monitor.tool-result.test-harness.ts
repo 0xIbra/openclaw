@@ -6,7 +6,6 @@ export const reactMock: MockFn = vi.fn();
 export const updateLastRouteMock: MockFn = vi.fn();
 export const dispatchMock: MockFn = vi.fn();
 export const readAllowFromStoreMock: MockFn = vi.fn();
-export const upsertPairingRequestMock: MockFn = vi.fn();
 
 vi.mock("./send.js", () => ({
   sendMessageDiscord: (...args: unknown[]) => sendMock(...args),
@@ -24,11 +23,6 @@ vi.mock("../auto-reply/dispatch.js", async (importOriginal) => {
     dispatchInboundMessageWithBufferedDispatcher: (...args: unknown[]) => dispatchMock(...args),
   };
 });
-
-vi.mock("../pairing/pairing-store.js", () => ({
-  readChannelAllowFromStore: (...args: unknown[]) => readAllowFromStoreMock(...args),
-  upsertChannelPairingRequest: (...args: unknown[]) => upsertPairingRequestMock(...args),
-}));
 
 vi.mock("../config/sessions.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../config/sessions.js")>();

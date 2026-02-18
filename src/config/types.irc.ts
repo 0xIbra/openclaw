@@ -52,7 +52,7 @@ export type IrcAccountConfig = {
   };
   /** Auto-join channel list at connect (example: ["#openclaw"]). */
   channels?: string[];
-  /** Direct message access policy (default: pairing). */
+  /** Direct message access policy (default: allowlist). */
   dmPolicy?: DmPolicy;
   /** Optional allowlist for inbound DM senders. */
   allowFrom?: Array<string | number>;

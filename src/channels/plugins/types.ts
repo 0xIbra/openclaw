@@ -23,7 +23,6 @@ export type {
   ChannelLogoutResult,
   ChannelOutboundAdapter,
   ChannelOutboundContext,
-  ChannelPairingAdapter,
   ChannelSecurityAdapter,
   ChannelSetupAdapter,
   ChannelStatusAdapter,

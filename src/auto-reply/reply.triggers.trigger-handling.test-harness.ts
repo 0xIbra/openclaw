@@ -127,7 +127,7 @@ export function makeCfg(home: string): OpenClawConfig {
       },
     },
     channels: {
-      whatsapp: {
+      telegram: {
         allowFrom: ["*"],
       },
     },
@@ -141,18 +141,18 @@ export function makeWhatsAppElevatedCfg(
 ): OpenClawConfig {
   const cfg = makeCfg(home);
   cfg.channels ??= {};
-  cfg.channels.whatsapp = {
-    ...cfg.channels.whatsapp,
+  cfg.channels.telegram = {
+    ...cfg.channels.telegram,
     allowFrom: ["+1000"],
   };
   if (opts?.requireMentionInGroups !== undefined) {
-    cfg.channels.whatsapp.groups = { "*": { requireMention: opts.requireMentionInGroups } };
+    cfg.channels.telegram.groups = { "*": { requireMention: opts.requireMentionInGroups } };
   }
 
   cfg.tools = {
     ...cfg.tools,
     elevated: {
-      allowFrom: { whatsapp: ["+1000"] },
+      allowFrom: { telegram: ["+1000"] },
       ...(opts?.elevatedEnabled === false ? { enabled: false } : {}),
     },
   };
@@ -172,7 +172,7 @@ export async function runDirectElevatedToggleAndLoadStore(params: {
       Body: params.body ?? "/elevated on",
       From: "+1000",
       To: "+2000",
-      Provider: "whatsapp",
+      Provider: "telegram",
       SenderE164: "+1000",
       CommandAuthorized: true,
     },

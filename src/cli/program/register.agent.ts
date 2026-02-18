@@ -63,7 +63,7 @@ ${formatHelpExamples([
   ],
   ['openclaw agent --to +15555550123 --message "Summon reply" --deliver', "Deliver reply."],
   [
-    'openclaw agent --agent ops --message "Generate report" --deliver --reply-channel slack --reply-to "#reports"',
+    'openclaw agent --agent ops --message "Generate report" --deliver --reply-channel discord --reply-to "channel:123456789012345678"',
     "Send reply to a different channel/target.",
   ],
 ])}

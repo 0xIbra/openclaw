@@ -14,7 +14,7 @@ import type { GroupToolPolicyBySenderConfig, GroupToolPolicyConfig } from "./typ
 export type DiscordDmConfig = {
   /** If false, ignore all incoming Discord DMs. Default: true. */
   enabled?: boolean;
-  /** Direct message access policy (default: pairing). */
+  /** Direct message access policy (default: allowlist). */
   policy?: DmPolicy;
   /** Allowlist for DM senders (ids or names). */
   allowFrom?: string[];

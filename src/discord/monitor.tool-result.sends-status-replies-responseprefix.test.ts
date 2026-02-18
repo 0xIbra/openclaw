@@ -336,11 +336,11 @@ describe("discord tool result dispatch", () => {
     expect(capturedBody).toContain("Ada (Ada#1234): hello");
   });
 
-  it("replies with explicit denial when dmPolicy is pairing", async () => {
+  it("replies with explicit denial when dmPolicy is allowlist", async () => {
     const cfg = {
       ...BASE_CFG,
       channels: {
-        discord: { dm: { enabled: true, policy: "pairing", allowFrom: [] } },
+        discord: { dm: { enabled: true, policy: "allowlist", allowFrom: [] } },
       },
     } as Config;
 
@@ -370,6 +370,8 @@ describe("discord tool result dispatch", () => {
 
     expect(dispatchMock).not.toHaveBeenCalled();
     expect(sendMock).toHaveBeenCalledTimes(1);
-    expect(String(sendMock.mock.calls[0]?.[1] ?? "")).toContain("Pairing is not available.");
+    expect(String(sendMock.mock.calls[0]?.[1] ?? "")).toContain(
+      "You are not authorized to message this bot.",
+    );
   }, 10000);
 });

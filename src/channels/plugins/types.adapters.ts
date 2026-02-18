@@ -185,16 +185,6 @@ export type ChannelLogoutContext<ResolvedAccount = unknown> = {
   log?: ChannelLogSink;
 };
 
-export type ChannelPairingAdapter = {
-  idLabel: string;
-  normalizeAllowEntry?: (entry: string) => string;
-  notifyApproval?: (params: {
-    cfg: OpenClawConfig;
-    id: string;
-    runtime?: RuntimeEnv;
-  }) => Promise<void>;
-};
-
 export type ChannelGatewayAdapter<ResolvedAccount = unknown> = {
   startAccount?: (ctx: ChannelGatewayContext<ResolvedAccount>) => Promise<unknown>;
   stopAccount?: (ctx: ChannelGatewayContext<ResolvedAccount>) => Promise<void>;

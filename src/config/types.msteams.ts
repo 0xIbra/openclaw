@@ -59,7 +59,7 @@ export type MSTeamsConfig = {
   tenantId?: string;
   /** Webhook server configuration. */
   webhook?: MSTeamsWebhookConfig;
-  /** Direct message access policy (default: pairing). */
+  /** Direct message access policy (default: allowlist). */
   dmPolicy?: DmPolicy;
   /** Allowlist for DM senders (AAD object IDs or UPNs). */
   allowFrom?: Array<string>;

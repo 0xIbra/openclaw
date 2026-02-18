@@ -88,7 +88,7 @@ export async function collectChannelSecurityFindings(params: {
         severity: "critical",
         title: `${input.label} DMs are open`,
         detail: `${policyPath}="open" allows anyone to DM the bot.`,
-        remediation: `Use pairing/allowlist; if you really need open DMs, ensure ${allowFromKey} includes "*".`,
+        remediation: `Use allowlist; if you really need open DMs, ensure ${allowFromKey} includes "*".`,
       });
       if (!hasWildcard) {
         findings.push({
@@ -226,80 +226,8 @@ export async function collectChannelSecurityFindings(params: {
             detail:
               "Discord slash commands are enabled, but neither an owner allowFrom list nor any per-guild/channel users allowlist is configured; /… commands will be rejected for everyone.",
             remediation:
-              "Add your user id to channels.discord.allowFrom (or approve yourself via pairing), or configure channels.discord.guilds.<id>.users.",
+              "Add your user id to channels.discord.allowFrom, or configure channels.discord.guilds.<id>.users.",
           });
-        }
-      }
-    }
-
-    if (plugin.id === "slack") {
-      const slackCfg =
-        (account as { config?: Record<string, unknown>; dm?: Record<string, unknown> } | null)
-          ?.config ?? ({} as Record<string, unknown>);
-      const nativeEnabled = resolveNativeCommandsEnabled({
-        providerId: "slack",
-        providerSetting: coerceNativeSetting(
-          (slackCfg.commands as { native?: unknown } | undefined)?.native,
-        ),
-        globalSetting: params.cfg.commands?.native,
-      });
-      const nativeSkillsEnabled = resolveNativeSkillsEnabled({
-        providerId: "slack",
-        providerSetting: coerceNativeSetting(
-          (slackCfg.commands as { nativeSkills?: unknown } | undefined)?.nativeSkills,
-        ),
-        globalSetting: params.cfg.commands?.nativeSkills,
-      });
-      const slashCommandEnabled =
-        nativeEnabled ||
-        nativeSkillsEnabled ||
-        (slackCfg.slashCommand as { enabled?: unknown } | undefined)?.enabled === true;
-      if (slashCommandEnabled) {
-        const useAccessGroups = params.cfg.commands?.useAccessGroups !== false;
-        if (!useAccessGroups) {
-          findings.push({
-            checkId: "channels.slack.commands.slash.useAccessGroups_off",
-            severity: "critical",
-            title: "Slack slash commands bypass access groups",
-            detail:
-              "Slack slash/native commands are enabled while commands.useAccessGroups=false; this can allow unrestricted /… command execution from channels/users you didn't explicitly authorize.",
-            remediation: "Set commands.useAccessGroups=true (recommended).",
-          });
-        } else {
-          const allowFromRaw = (
-            account as
-              | { config?: { allowFrom?: unknown }; dm?: { allowFrom?: unknown } }
-              | null
-              | undefined
-          )?.config?.allowFrom;
-          const legacyAllowFromRaw = (
-            account as { dm?: { allowFrom?: unknown } } | null | undefined
-          )?.dm?.allowFrom;
-          const allowFrom = Array.isArray(allowFromRaw)
-            ? allowFromRaw
-            : Array.isArray(legacyAllowFromRaw)
-              ? legacyAllowFromRaw
-              : [];
-          const ownerAllowFromConfigured = normalizeAllowFromList(allowFrom).length > 0;
-          const channels = (slackCfg.channels as Record<string, unknown> | undefined) ?? {};
-          const hasAnyChannelUsersAllowlist = Object.values(channels).some((value) => {
-            if (!value || typeof value !== "object") {
-              return false;
-            }
-            const channel = value as Record<string, unknown>;
-            return Array.isArray(channel.users) && channel.users.length > 0;
-          });
-          if (!ownerAllowFromConfigured && !hasAnyChannelUsersAllowlist) {
-            findings.push({
-              checkId: "channels.slack.commands.slash.no_allowlists",
-              severity: "warn",
-              title: "Slack slash commands have no allowlists",
-              detail:
-                "Slack slash/native commands are enabled, but neither an owner allowFrom list nor any channels.<id>.users allowlist is configured; /… commands will be rejected for everyone.",
-              remediation:
-                "Approve yourself via pairing (recommended), or set channels.slack.allowFrom and/or channels.slack.channels.<id>.users.",
-            });
-          }
         }
       }
     }
@@ -469,7 +397,7 @@ export async function collectChannelSecurityFindings(params: {
           detail:
             'Telegram group sender allowlist contains "*", which allows any group member to run /… commands and control directives.',
           remediation:
-            'Remove "*" from channels.telegram.groupAllowFrom and pairing store; prefer explicit numeric Telegram user IDs.',
+            'Remove "*" from channels.telegram.groupAllowFrom; prefer explicit numeric Telegram user IDs.',
         });
         continue;
       }
@@ -490,8 +418,7 @@ export async function collectChannelSecurityFindings(params: {
           detail:
             `Telegram group access is enabled but no sender allowlist is configured; this allows any group member to invoke /… commands` +
             (skillsEnabled ? " (including skill commands)." : "."),
-          remediation:
-            "Approve yourself via pairing (recommended), or set channels.telegram.groupAllowFrom (or per-group groups.<id>.allowFrom).",
+          remediation: "Set channels.telegram.groupAllowFrom (or per-group groups.<id>.allowFrom).",
         });
       }
     }

@@ -90,9 +90,8 @@ describe("commands registry", () => {
       { commands: { native: true } },
       { provider: "discord" },
     );
-    expect(native.find((spec) => spec.name === "voice")).toBeTruthy();
-    expect(findCommandByNativeName("voice", "discord")?.key).toBe("tts");
-    expect(findCommandByNativeName("tts", "discord")).toBeUndefined();
+    expect(native.find((spec) => spec.name === "voice")).toBeFalsy();
+    expect(findCommandByNativeName("voice", "discord")).toBeUndefined();
   });
 
   it("detects known text commands", () => {

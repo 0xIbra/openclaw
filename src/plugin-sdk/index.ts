@@ -38,7 +38,6 @@ export type {
   ChannelOutboundAdapter,
   ChannelOutboundContext,
   ChannelOutboundTargetMode,
-  ChannelPairingAdapter,
   ChannelPollContext,
   ChannelPollResult,
   ChannelResolveKind,
@@ -108,11 +107,6 @@ export type {
   GroupToolPolicyBySenderConfig,
   MarkdownConfig,
   MarkdownTableMode,
-  GoogleChatAccountConfig,
-  GoogleChatConfig,
-  GoogleChatDmConfig,
-  GoogleChatGroupConfig,
-  GoogleChatActionConfig,
   MSTeamsChannelConfig,
   MSTeamsConfig,
   MSTeamsReplyStyle,
@@ -128,10 +122,6 @@ export {
   MarkdownTableModeSchema,
   normalizeAllowFrom,
   requireOpenAllowFrom,
-  TtsAutoSchema,
-  TtsConfigSchema,
-  TtsModeSchema,
-  TtsProviderSchema,
 } from "../config/zod-schema.core.js";
 export { ToolPolicySchema } from "../config/zod-schema.agent-runtime.js";
 export type { RuntimeEnv } from "../runtime.js";
@@ -238,8 +228,6 @@ export {
   applyAccountNameToChannelSection,
   migrateBaseNameToDefaultAccount,
 } from "../channels/plugins/setup-helpers.js";
-export { formatPairingApproveHint } from "../channels/plugins/helpers.js";
-export { PAIRING_APPROVED_MESSAGE } from "../channels/plugins/pairing-message.js";
 
 export type {
   ChannelOnboardingAdapter,

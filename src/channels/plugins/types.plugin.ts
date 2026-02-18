@@ -10,7 +10,6 @@ import type {
   ChannelGroupAdapter,
   ChannelHeartbeatAdapter,
   ChannelOutboundAdapter,
-  ChannelPairingAdapter,
   ChannelSecurityAdapter,
   ChannelSetupAdapter,
   ChannelStatusAdapter,
@@ -60,7 +59,6 @@ export type ChannelPlugin<ResolvedAccount = any, Probe = unknown, Audit = unknow
   config: ChannelConfigAdapter<ResolvedAccount>;
   configSchema?: ChannelConfigSchema;
   setup?: ChannelSetupAdapter;
-  pairing?: ChannelPairingAdapter;
   security?: ChannelSecurityAdapter<ResolvedAccount>;
   groups?: ChannelGroupAdapter;
   mentions?: ChannelMentionAdapter;

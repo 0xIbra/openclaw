@@ -7,7 +7,6 @@ import {
   deleteAccountFromConfigSection,
   discordOnboardingAdapter,
   DiscordConfigSchema,
-  formatPairingApproveHint,
   getChatChannelMeta,
   listDiscordAccountIds,
   listDiscordDirectoryGroupsFromConfig,
@@ -17,7 +16,6 @@ import {
   normalizeAccountId,
   normalizeDiscordMessagingTarget,
   normalizeDiscordOutboundTarget,
-  PAIRING_APPROVED_MESSAGE,
   resolveDiscordAccount,
   resolveDefaultDiscordAccountId,
   resolveDiscordGroupRequireMention,
@@ -51,16 +49,6 @@ export const discordPlugin: ChannelPlugin<ResolvedDiscordAccount> = {
     ...meta,
   },
   onboarding: discordOnboardingAdapter,
-  pairing: {
-    idLabel: "discordUserId",
-    normalizeAllowEntry: (entry) => entry.replace(/^(discord|user):/i, ""),
-    notifyApproval: async ({ id }) => {
-      await getDiscordRuntime().channel.discord.sendMessageDiscord(
-        `user:${id}`,
-        PAIRING_APPROVED_MESSAGE,
-      );
-    },
-  },
   capabilities: {
     chatTypes: ["direct", "channel", "thread"],
     polls: true,
@@ -119,10 +107,10 @@ export const discordPlugin: ChannelPlugin<ResolvedDiscordAccount> = {
         ? `channels.discord.accounts.${resolvedAccountId}.dm.`
         : "channels.discord.dm.";
       return {
-        policy: account.config.dm?.policy ?? "pairing",
+        policy: account.config.dm?.policy ?? "allowlist",
         allowFrom: account.config.dm?.allowFrom ?? [],
         allowFromPath,
-        approveHint: formatPairingApproveHint("discord"),
+        approveHint: "Add authorized IDs to channels.discord.allowFrom.",
         normalizeEntry: (raw) => raw.replace(/^(discord|user):/i, "").replace(/^<@!?(\d+)>$/, "$1"),
       };
     },

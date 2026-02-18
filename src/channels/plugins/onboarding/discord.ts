@@ -255,7 +255,7 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
   policyKey: "channels.discord.dmPolicy",
   allowFromKey: "channels.discord.allowFrom",
   getCurrent: (cfg) =>
-    cfg.channels?.discord?.dmPolicy ?? cfg.channels?.discord?.dm?.policy ?? "pairing",
+    cfg.channels?.discord?.dmPolicy ?? cfg.channels?.discord?.dm?.policy ?? "allowlist",
   setPolicy: (cfg, policy) => setDiscordDmPolicy(cfg, policy),
   promptAllowFrom: promptDiscordAllowFrom,
 };

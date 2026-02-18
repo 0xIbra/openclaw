@@ -44,31 +44,9 @@ type ChannelCapabilitiesReport = {
   support?: ChannelCapabilities;
   actions?: string[];
   probe?: unknown;
-  slackScopes?: Array<{
-    tokenType: "bot" | "user";
-    result: SlackScopesResult;
-  }>;
   target?: DiscordTargetSummary;
   channelPermissions?: DiscordPermissionsReport;
 };
-
-type SlackScopesResult = {
-  ok?: boolean;
-  scopes?: string[];
-  missing?: string[];
-  error?: string;
-  source?: string;
-};
-
-async function fetchSlackScopesSafe(
-  _token: string,
-  _timeoutMs: number,
-): Promise<SlackScopesResult> {
-  return {
-    ok: false,
-    error: "Slack channel support removed.",
-  };
-}
 
 const REQUIRED_DISCORD_PERMISSIONS = ["ViewChannel", "SendMessages"] as const;
 
@@ -224,25 +202,6 @@ function formatProbeLines(channelId: string, probe: unknown): string[] {
     }
   }
 
-  if (channelId === "slack") {
-    const bot = probeObj.bot as { name?: string } | undefined;
-    const team = probeObj.team as { name?: string; id?: string } | undefined;
-    if (bot?.name) {
-      lines.push(`Bot: ${theme.accent(`@${bot.name}`)}`);
-    }
-    if (team?.name || team?.id) {
-      const id = team?.id ? ` (${team.id})` : "";
-      lines.push(`Team: ${team?.name ?? "unknown"}${id}`);
-    }
-  }
-
-  if (channelId === "signal") {
-    const version = probeObj.version as string | null | undefined;
-    if (version) {
-      lines.push(`Signal daemon: ${version}`);
-    }
-  }
-
   if (channelId === "msteams") {
     const appId = typeof probeObj.appId === "string" ? probeObj.appId.trim() : "";
     if (appId) {
@@ -395,33 +354,6 @@ async function resolveChannelReports(params: {
       }
     }
 
-    let slackScopes: ChannelCapabilitiesReport["slackScopes"];
-    if (plugin.id === "slack" && configured && enabled) {
-      const botToken = (resolvedAccount as { botToken?: string }).botToken?.trim();
-      const userToken = (
-        resolvedAccount as { config?: { userToken?: string } }
-      ).config?.userToken?.trim();
-      const scopeReports: NonNullable<ChannelCapabilitiesReport["slackScopes"]> = [];
-      if (botToken) {
-        scopeReports.push({
-          tokenType: "bot",
-          result: await fetchSlackScopesSafe(botToken, timeoutMs),
-        });
-      } else {
-        scopeReports.push({
-          tokenType: "bot",
-          result: { ok: false, error: "Slack bot token missing." },
-        });
-      }
-      if (userToken) {
-        scopeReports.push({
-          tokenType: "user",
-          result: await fetchSlackScopesSafe(userToken, timeoutMs),
-        });
-      }
-      slackScopes = scopeReports;
-    }
-
     let discordTarget: DiscordTargetSummary | undefined;
     let discordPermissions: DiscordPermissionsReport | undefined;
     if (plugin.id === "discord" && params.target) {
@@ -447,7 +379,6 @@ async function resolveChannelReports(params: {
       target: discordTarget,
       channelPermissions: discordPermissions,
       actions,
-      slackScopes,
     });
   }
   return reports;
@@ -537,17 +468,6 @@ export async function channelsCapabilitiesCommand(
       lines.push(...probeLines);
     } else if (report.configured && report.enabled) {
       lines.push(theme.muted("Probe: unavailable"));
-    }
-    if (report.channel === "slack" && report.slackScopes) {
-      for (const entry of report.slackScopes) {
-        const source = entry.result.source ? ` (${entry.result.source})` : "";
-        const label = entry.tokenType === "user" ? "User scopes" : "Bot scopes";
-        if (entry.result.ok && entry.result.scopes?.length) {
-          lines.push(`${label}${source}: ${entry.result.scopes.join(", ")}`);
-        } else if (entry.result.error) {
-          lines.push(`${label}: ${theme.error(entry.result.error)}`);
-        }
-      }
     }
     if (report.channel === "discord" && report.channelPermissions) {
       const perms = report.channelPermissions;

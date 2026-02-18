@@ -648,7 +648,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       pendingChanges = pendingChanges || changes.length > 0;
     }
     if (shouldRepair) {
-      // Legacy migration (2026-01-02, commit: 16420e5b) — normalize per-provider allowlists; move WhatsApp gating into channels.whatsapp.allowFrom.
+      // Legacy migration (2026-01-02, commit: 16420e5b) — normalize per-channel allowlists.
       if (migrated) {
         cfg = migrated;
       }

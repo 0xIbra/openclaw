@@ -194,13 +194,8 @@ function resolveSenderCandidates(params: {
     }
     candidates.push(trimmed);
   };
-  if (params.providerId === "whatsapp") {
-    pushCandidate(params.senderE164);
-    pushCandidate(params.senderId);
-  } else {
-    pushCandidate(params.senderId);
-    pushCandidate(params.senderE164);
-  }
+  pushCandidate(params.senderId);
+  pushCandidate(params.senderE164);
   pushCandidate(params.from);
 
   const normalized: string[] = [];

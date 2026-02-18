@@ -111,9 +111,9 @@ export type MsgContext = {
   SenderTag?: string;
   SenderE164?: string;
   Timestamp?: number;
-  /** Provider label (e.g. whatsapp, telegram). */
+  /** Provider label (e.g. telegram, discord). */
   Provider?: string;
-  /** Provider surface label (e.g. discord, slack). Prefer this over `Provider` when available. */
+  /** Provider surface label (e.g. discord, telegram). Prefer this over `Provider` when available. */
   Surface?: string;
   WasMentioned?: boolean;
   CommandAuthorized?: boolean;

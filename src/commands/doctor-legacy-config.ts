@@ -10,7 +10,7 @@ export function normalizeLegacyConfigValues(cfg: OpenClawConfig): {
     Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
   const normalizeDmAliases = (params: {
-    provider: "slack" | "discord";
+    provider: "discord";
     entry: Record<string, unknown>;
     pathPrefix: string;
   }): { entry: Record<string, unknown>; changed: boolean } => {
@@ -90,7 +90,7 @@ export function normalizeLegacyConfigValues(cfg: OpenClawConfig): {
     return { entry: updated, changed };
   };
 
-  const normalizeProvider = (provider: "slack" | "discord") => {
+  const normalizeProvider = (provider: "discord") => {
     const channels = next.channels as Record<string, unknown> | undefined;
     const rawEntry = channels?.[provider];
     if (!isRecord(rawEntry)) {
@@ -130,55 +130,15 @@ export function normalizeLegacyConfigValues(cfg: OpenClawConfig): {
     }
 
     if (changed) {
+      const channels = (next.channels ?? {}) as Record<string, unknown>;
       next = {
         ...next,
-        channels: {
-          ...next.channels,
-          [provider]: updated as unknown,
-        },
+        channels: { ...channels, [provider]: updated } as OpenClawConfig["channels"],
       };
     }
   };
 
-  normalizeProvider("slack");
   normalizeProvider("discord");
-
-  const legacyAckReaction = cfg.messages?.ackReaction?.trim();
-  const hasWhatsAppConfig = cfg.channels?.whatsapp !== undefined;
-  if (legacyAckReaction && hasWhatsAppConfig) {
-    const hasWhatsAppAck = cfg.channels?.whatsapp?.ackReaction !== undefined;
-    if (!hasWhatsAppAck) {
-      const legacyScope = cfg.messages?.ackReactionScope ?? "group-mentions";
-      let direct = true;
-      let group: "always" | "mentions" | "never" = "mentions";
-      if (legacyScope === "all") {
-        direct = true;
-        group = "always";
-      } else if (legacyScope === "direct") {
-        direct = true;
-        group = "never";
-      } else if (legacyScope === "group-all") {
-        direct = false;
-        group = "always";
-      } else if (legacyScope === "group-mentions") {
-        direct = false;
-        group = "mentions";
-      }
-      next = {
-        ...next,
-        channels: {
-          ...next.channels,
-          whatsapp: {
-            ...next.channels?.whatsapp,
-            ackReaction: { emoji: legacyAckReaction, direct, group },
-          },
-        },
-      };
-      changes.push(
-        `Copied messages.ackReaction → channels.whatsapp.ackReaction (scope: ${legacyScope}).`,
-      );
-    }
-  }
 
   return { config: next, changes };
 }

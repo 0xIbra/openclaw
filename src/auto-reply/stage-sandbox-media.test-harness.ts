@@ -16,10 +16,10 @@ export function createSandboxMediaContexts(mediaPath: string): {
 } {
   const ctx: MsgContext = {
     Body: "hi",
-    From: "whatsapp:group:demo",
+    From: "telegram:group:demo",
     To: "+2000",
     ChatType: "group",
-    Provider: "whatsapp",
+    Provider: "telegram",
     MediaPath: mediaPath,
     MediaType: "image/jpeg",
     MediaUrl: mediaPath,
@@ -39,7 +39,7 @@ export function createSandboxMediaStageConfig(home: string): OpenClawConfig {
         },
       },
     },
-    channels: { whatsapp: { allowFrom: ["*"] } },
+    channels: { telegram: { allowFrom: ["*"] } },
     session: { store: join(home, "sessions.json") },
   } as OpenClawConfig;
 }

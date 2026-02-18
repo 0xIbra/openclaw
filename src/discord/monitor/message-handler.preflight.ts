@@ -121,7 +121,8 @@ export async function preflightDiscordMessage(
     return null;
   }
 
-  const dmPolicy = params.discordConfig?.dmPolicy ?? params.discordConfig?.dm?.policy ?? "pairing";
+  const dmPolicy =
+    params.discordConfig?.dmPolicy ?? params.discordConfig?.dm?.policy ?? "allowlist";
   let commandAuthorized = true;
   if (isDirectMessage) {
     if (dmPolicy === "disabled") {
@@ -145,21 +146,22 @@ export async function preflightDiscordMessage(
       const permitted = allowMatch.allowed;
       if (!permitted) {
         commandAuthorized = false;
-        if (dmPolicy === "pairing") {
-          try {
-            await sendMessageDiscord(`user:${author.id}`, "Pairing is not available.", {
+        try {
+          await sendMessageDiscord(
+            `user:${author.id}`,
+            "You are not authorized to message this bot.",
+            {
               token: params.token,
               rest: params.client.rest,
               accountId: params.accountId,
-            });
-          } catch (err) {
-            logVerbose(`discord unauthorized DM reply failed for ${author.id}: ${String(err)}`);
-          }
-        } else {
-          logVerbose(
-            `Blocked unauthorized discord sender ${sender.id} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
+            },
           );
+        } catch (err) {
+          logVerbose(`discord unauthorized DM reply failed for ${author.id}: ${String(err)}`);
         }
+        logVerbose(
+          `Blocked unauthorized discord sender ${sender.id} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
+        );
         return null;
       }
       commandAuthorized = true;

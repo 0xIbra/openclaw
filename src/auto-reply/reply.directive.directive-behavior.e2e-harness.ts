@@ -67,7 +67,7 @@ export function makeWhatsAppDirectiveConfig(
         ...defaults,
       },
     },
-    channels: { whatsapp: { allowFrom: ["*"] } },
+    channels: { telegram: { allowFrom: ["*"] } },
     session: { store: sessionStorePath(home) },
     ...extra,
   };
@@ -76,7 +76,7 @@ export function makeWhatsAppDirectiveConfig(
 export const AUTHORIZED_WHATSAPP_COMMAND = {
   From: "+1222",
   To: "+1222",
-  Provider: "whatsapp",
+  Provider: "telegram",
   SenderE164: "+1222",
   CommandAuthorized: true,
 } as const;
@@ -91,10 +91,10 @@ export function makeElevatedDirectiveConfig(home: string) {
     {
       tools: {
         elevated: {
-          allowFrom: { whatsapp: ["+1222"] },
+          allowFrom: { telegram: ["+1222"] },
         },
       },
-      channels: { whatsapp: { allowFrom: ["+1222"] } },
+      channels: { telegram: { allowFrom: ["+1222"] } },
       session: { store: sessionStorePath(home) },
     },
   );
@@ -140,10 +140,10 @@ export function makeRestrictedElevatedDisabledConfig(home: string) {
     },
     tools: {
       elevated: {
-        allowFrom: { whatsapp: ["+1222"] },
+        allowFrom: { telegram: ["+1222"] },
       },
     },
-    channels: { whatsapp: { allowFrom: ["+1222"] } },
+    channels: { telegram: { allowFrom: ["+1222"] } },
     session: { store: path.join(home, "sessions.json") },
   } as const;
 }

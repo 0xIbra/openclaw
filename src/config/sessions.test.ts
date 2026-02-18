@@ -46,8 +46,8 @@ describe("sessions", () => {
   });
 
   it("keeps group chats distinct", () => {
-    expect(deriveSessionKey("per-sender", { From: "12345-678@g.us" })).toBe(
-      "whatsapp:group:12345-678@g.us",
+    expect(deriveSessionKey("per-sender", { From: "telegram:group:12345-678" })).toBe(
+      "telegram:group:12345-678",
     );
   });
 
@@ -104,8 +104,8 @@ describe("sessions", () => {
   });
 
   it("leaves groups untouched even with main key", () => {
-    expect(resolveSessionKey("per-sender", { From: "12345-678@g.us" }, "main")).toBe(
-      "agent:main:whatsapp:group:12345-678@g.us",
+    expect(resolveSessionKey("per-sender", { From: "telegram:group:12345-678" }, "main")).toBe(
+      "agent:main:telegram:group:12345-678",
     );
   });
 

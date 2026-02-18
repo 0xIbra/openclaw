@@ -8,7 +8,6 @@ import {
   InboundDebounceSchema,
   NativeCommandsSettingSchema,
   QueueSchema,
-  TtsConfigSchema,
 } from "./zod-schema.core.js";
 
 const SessionResetConfigSchema = z
@@ -115,7 +114,6 @@ export const MessagesSchema = z
     ackReactionScope: z.enum(["group-mentions", "group-all", "direct", "all"]).optional(),
     removeAckAfterReply: z.boolean().optional(),
     suppressToolErrors: z.boolean().optional(),
-    tts: TtsConfigSchema,
   })
   .strict()
   .optional();

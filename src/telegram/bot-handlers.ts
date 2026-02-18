@@ -553,7 +553,7 @@ export const registerTelegramHandlers = ({
         allowFrom: telegramCfg.allowFrom,
         storeAllowFrom,
       });
-      const dmPolicy = telegramCfg.dmPolicy ?? "pairing";
+      const dmPolicy = telegramCfg.dmPolicy ?? "allowlist";
       const senderId = callback.from?.id ? String(callback.from.id) : "";
       const senderUsername = callback.from?.username ?? "";
       if (

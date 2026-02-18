@@ -2,10 +2,6 @@ import type { LegacyConfigRule } from "./legacy.shared.js";
 
 export const LEGACY_CONFIG_RULES: LegacyConfigRule[] = [
   {
-    path: ["whatsapp"],
-    message: "whatsapp config moved to channels.whatsapp (auto-migrated on load).",
-  },
-  {
     path: ["telegram"],
     message: "telegram config moved to channels.telegram (auto-migrated on load).",
   },
@@ -14,25 +10,13 @@ export const LEGACY_CONFIG_RULES: LegacyConfigRule[] = [
     message: "discord config moved to channels.discord (auto-migrated on load).",
   },
   {
-    path: ["slack"],
-    message: "slack config moved to channels.slack (auto-migrated on load).",
-  },
-  {
-    path: ["signal"],
-    message: "signal config moved to channels.signal (auto-migrated on load).",
-  },
-  {
-    path: ["imessage"],
-    message: "imessage config moved to channels.imessage (auto-migrated on load).",
-  },
-  {
     path: ["msteams"],
     message: "msteams config moved to channels.msteams (auto-migrated on load).",
   },
   {
     path: ["routing", "allowFrom"],
     message:
-      "routing.allowFrom was removed; use channels.whatsapp.allowFrom instead (auto-migrated on load).",
+      "routing.allowFrom was removed; use channels.telegram.allowFrom instead (auto-migrated on load).",
   },
   {
     path: ["routing", "bindings"],
@@ -55,7 +39,7 @@ export const LEGACY_CONFIG_RULES: LegacyConfigRule[] = [
   {
     path: ["routing", "groupChat", "requireMention"],
     message:
-      'routing.groupChat.requireMention was removed; use channels.whatsapp/telegram/imessage groups defaults (e.g. channels.whatsapp.groups."*".requireMention) instead (auto-migrated on load).',
+      'routing.groupChat.requireMention was removed; use channels.telegram groups defaults (e.g. channels.telegram.groups."*".requireMention) instead (auto-migrated on load).',
   },
   {
     path: ["routing", "groupChat", "mentionPatterns"],
@@ -124,10 +108,6 @@ export const LEGACY_CONFIG_RULES: LegacyConfigRule[] = [
     path: ["agent", "imageModelFallbacks"],
     message:
       "agent.imageModelFallbacks was replaced by agents.defaults.imageModel.fallbacks (auto-migrated on load).",
-  },
-  {
-    path: ["messages", "tts", "enabled"],
-    message: "messages.tts.enabled was replaced by messages.tts.auto (auto-migrated on load).",
   },
   {
     path: ["gateway", "token"],

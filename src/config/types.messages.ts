@@ -1,5 +1,4 @@
 import type { QueueDropPolicy, QueueMode, QueueModeByProvider } from "./types.queue.js";
-import type { TtsConfig } from "./types.tts.js";
 
 export type GroupChatConfig = {
   mentionPatterns?: string[];
@@ -50,7 +49,7 @@ export type AudioConfig = {
 };
 
 export type MessagesConfig = {
-  /** @deprecated Use `whatsapp.messagePrefix` (WhatsApp-only inbound prefix). */
+  /** @deprecated Use provider-specific inbound prefix options instead. */
   messagePrefix?: string;
   /**
    * Prefix auto-added to all outbound replies.
@@ -84,15 +83,13 @@ export type MessagesConfig = {
   removeAckAfterReply?: boolean;
   /** When true, suppress ⚠️ tool-error warnings from being shown to the user. Default: false. */
   suppressToolErrors?: boolean;
-  /** Text-to-speech settings for outbound replies. */
-  tts?: TtsConfig;
 };
 
 export type NativeCommandsSetting = boolean | "auto";
 
 /**
  * Per-provider allowlist for command authorization.
- * Keys are channel IDs (e.g., "discord", "whatsapp") or "*" for global default.
+ * Keys are channel IDs (e.g., "discord", "telegram") or "*" for global default.
  * Values are arrays of sender IDs allowed to use commands on that channel.
  */
 export type CommandAllowFrom = Record<string, Array<string | number>>;

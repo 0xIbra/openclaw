@@ -229,13 +229,13 @@ describe("createTelegramBot", () => {
       process.env.TZ = originalTz;
     }
   });
-  it("returns explicit pairing unavailable for unknown DM senders", async () => {
+  it("returns explicit allowlist denial for unknown DM senders", async () => {
     onSpy.mockReset();
     sendMessageSpy.mockReset();
     replySpy.mockReset();
 
     loadConfig.mockReturnValue({
-      channels: { telegram: { dmPolicy: "pairing" } },
+      channels: { telegram: { dmPolicy: "allowlist" } },
     });
 
     createTelegramBot({ token: "tok" });
@@ -255,15 +255,15 @@ describe("createTelegramBot", () => {
     expect(replySpy).not.toHaveBeenCalled();
     expect(sendMessageSpy).toHaveBeenCalledTimes(1);
     expect(sendMessageSpy.mock.calls[0]?.[0]).toBe(1234);
-    expect(sendMessageSpy.mock.calls[0]?.[1]).toBe("Pairing is not available.");
+    expect(sendMessageSpy.mock.calls[0]?.[1]).toBe("You are not authorized to message this bot.");
   });
-  it("replies with pairing unavailable on repeated unknown DM messages", async () => {
+  it("replies with allowlist denial on repeated unknown DM messages", async () => {
     onSpy.mockReset();
     sendMessageSpy.mockReset();
     replySpy.mockReset();
 
     loadConfig.mockReturnValue({
-      channels: { telegram: { dmPolicy: "pairing" } },
+      channels: { telegram: { dmPolicy: "allowlist" } },
     });
 
     createTelegramBot({ token: "tok" });
@@ -290,7 +290,7 @@ describe("createTelegramBot", () => {
     expect(replySpy).not.toHaveBeenCalled();
     expect(sendMessageSpy).toHaveBeenCalledTimes(2);
     for (const call of sendMessageSpy.mock.calls) {
-      expect(call[1]).toBe("Pairing is not available.");
+      expect(call[1]).toBe("You are not authorized to message this bot.");
     }
   });
   it("triggers typing cue via onReplyStart", async () => {

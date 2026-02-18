@@ -114,13 +114,13 @@ describe("dispatchReplyFromConfig", () => {
     expect(dispatcher.sendFinalReply).toHaveBeenCalledTimes(1);
   });
 
-  it("routes when OriginatingChannel differs from Provider", async () => {
+  it("keeps dispatcher delivery when OriginatingChannel differs from Provider", async () => {
     setNoAbort();
     mocks.routeReply.mockClear();
     const cfg = emptyConfig;
     const dispatcher = createDispatcher();
     const ctx = buildTestCtx({
-      Provider: "slack",
+      Provider: "discord",
       AccountId: "acc-1",
       MessageThreadId: 123,
       OriginatingChannel: "telegram",
@@ -133,25 +133,17 @@ describe("dispatchReplyFromConfig", () => {
       _cfg: OpenClawConfig,
     ) => ({ text: "hi" }) satisfies ReplyPayload;
     await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
-
-    expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
-    expect(mocks.routeReply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: "telegram",
-        to: "telegram:999",
-        accountId: "acc-1",
-        threadId: 123,
-      }),
-    );
+    expect(dispatcher.sendFinalReply).toHaveBeenCalledTimes(1);
+    expect(mocks.routeReply).not.toHaveBeenCalled();
   });
 
-  it("routes media-only tool results when summaries are suppressed", async () => {
+  it("keeps media-only tool results in dispatcher when summaries are suppressed", async () => {
     setNoAbort();
     mocks.routeReply.mockClear();
     const cfg = emptyConfig;
     const dispatcher = createDispatcher();
     const ctx = buildTestCtx({
-      Provider: "slack",
+      Provider: "discord",
       ChatType: "group",
       AccountId: "acc-1",
       OriginatingChannel: "telegram",
@@ -172,13 +164,13 @@ describe("dispatchReplyFromConfig", () => {
     };
 
     await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
-
-    expect(dispatcher.sendToolResult).not.toHaveBeenCalled();
+    expect(dispatcher.sendToolResult).toHaveBeenCalledTimes(1);
     expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
-    expect(mocks.routeReply).toHaveBeenCalledTimes(1);
-    const routed = mocks.routeReply.mock.calls[0]?.[0] as { payload?: ReplyPayload } | undefined;
-    expect(routed?.payload?.mediaUrls).toEqual(["https://example.com/tts-routed.opus"]);
-    expect(routed?.payload?.text).toBeUndefined();
+    expect(mocks.routeReply).not.toHaveBeenCalled();
+    expect(firstToolResultPayload(dispatcher)?.mediaUrls).toEqual([
+      "https://example.com/tts-routed.opus",
+    ]);
+    expect(firstToolResultPayload(dispatcher)?.text).toBeUndefined();
   });
 
   it("provides onToolResult in DM sessions", async () => {
@@ -450,9 +442,9 @@ describe("dispatchReplyFromConfig", () => {
     setNoAbort();
     const cfg = { diagnostics: { enabled: true } } as OpenClawConfig;
     const ctx = buildTestCtx({
-      Provider: "whatsapp",
-      OriginatingChannel: "whatsapp",
-      OriginatingTo: "whatsapp:+15555550123",
+      Provider: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:+15555550123",
       MessageSid: "msg-dup",
     });
     const replyResolver = vi.fn(async () => ({ text: "hi" }) as ReplyPayload);
@@ -473,7 +465,7 @@ describe("dispatchReplyFromConfig", () => {
     expect(replyResolver).toHaveBeenCalledTimes(1);
     expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel: "whatsapp",
+        channel: "telegram",
         outcome: "skipped",
         reason: "duplicate",
       }),

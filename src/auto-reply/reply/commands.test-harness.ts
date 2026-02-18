@@ -16,8 +16,8 @@ export function buildCommandTestParams(
     CommandBody: commandBody,
     CommandSource: "text",
     CommandAuthorized: true,
-    Provider: "whatsapp",
-    Surface: "whatsapp",
+    Provider: "telegram",
+    Surface: "telegram",
     ...ctxOverrides,
   } as MsgContext;
 
@@ -41,7 +41,7 @@ export function buildCommandTestParams(
     resolvedVerboseLevel: "off" as const,
     resolvedReasoningLevel: "off" as const,
     resolveDefaultThinkingLevel: async () => undefined,
-    provider: "whatsapp",
+    provider: "telegram",
     model: "test-model",
     contextTokens: 0,
     isGroup: false,

@@ -109,8 +109,8 @@ describe("config io write", () => {
         initialConfig: {
           channels: {
             discord: {
-              dmPolicy: "pairing",
-              dm: { enabled: true, policy: "pairing" },
+              dmPolicy: "allowlist",
+              dm: { enabled: true, policy: "allowlist" },
             },
           },
           gateway: { port: 18789 },
@@ -132,7 +132,7 @@ describe("config io write", () => {
         };
       };
 
-      expect(persisted.channels?.discord?.dmPolicy).toBe("pairing");
+      expect(persisted.channels?.discord?.dmPolicy).toBe("allowlist");
       expect(persisted.channels?.discord?.dm).toEqual({ enabled: true });
     });
   });

@@ -339,7 +339,7 @@ describe("/compact command", () => {
     const { compactEmbeddedPiSession } = await import("../../agents/pi-embedded.js");
     const cfg = {
       commands: { text: true },
-      channels: { whatsapp: { allowFrom: ["*"] } },
+      channels: { telegram: { allowFrom: ["*"] } },
       session: { store: "/tmp/openclaw-session-store.json" },
     } as OpenClawConfig;
     const params = buildParams("/compact: focus on decisions", cfg, {
@@ -374,7 +374,7 @@ describe("/compact command", () => {
         sessionKey: "agent:main:main",
         trigger: "manual",
         customInstructions: "focus on decisions",
-        messageChannel: "whatsapp",
+        messageChannel: "telegram",
         groupId: "group-1",
         groupChannel: "#general",
         groupSpace: "workspace-1",
@@ -464,7 +464,7 @@ describe("handleCommands /config configWrites gating", () => {
   it("blocks /config set when channel config writes are disabled", async () => {
     const cfg = {
       commands: { config: true, text: true },
-      channels: { whatsapp: { allowFrom: ["*"], configWrites: false } },
+      channels: { telegram: { allowFrom: ["*"], configWrites: false } },
     } as OpenClawConfig;
     const params = buildParams('/config set messages.ackReaction=":)"', cfg);
     const result = await handleCommands(params);
@@ -740,7 +740,7 @@ describe("handleCommands plugin commands", () => {
 
     const cfg = {
       commands: { text: true },
-      channels: { whatsapp: { allowFrom: ["*"] } },
+      channels: { telegram: { allowFrom: ["*"] } },
     } as OpenClawConfig;
     const params = buildParams("/card", cfg);
     const commandResult = await handleCommands(params);
@@ -764,7 +764,7 @@ describe("handleCommands identity", () => {
     });
     const result = await handleCommands(params);
     expect(result.shouldContinue).toBe(false);
-    expect(result.reply?.text).toContain("Channel: whatsapp");
+    expect(result.reply?.text).toContain("Channel: telegram");
     expect(result.reply?.text).toContain("User id: 12345");
     expect(result.reply?.text).toContain("Username: @TestUser");
     expect(result.reply?.text).toContain("AllowFrom: 12345");

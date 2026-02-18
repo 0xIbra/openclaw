@@ -372,8 +372,8 @@ export type AgentComponentContext = {
   guildEntries?: Record<string, DiscordGuildEntryResolved>;
   /** DM allowlist (from allowFrom config; legacy: dm.allowFrom) */
   allowFrom?: string[];
-  /** DM policy (default: "pairing") */
-  dmPolicy?: "open" | "pairing" | "allowlist" | "disabled";
+  /** DM policy (default: "allowlist") */
+  dmPolicy?: "open" | "allowlist" | "disabled";
 };
 
 /**
@@ -442,7 +442,7 @@ async function ensureDmComponentAuthorized(params: {
   replyOpts: { ephemeral?: boolean };
 }): Promise<boolean> {
   const { ctx, interaction, user, componentLabel, replyOpts } = params;
-  const dmPolicy = ctx.dmPolicy ?? "pairing";
+  const dmPolicy = ctx.dmPolicy ?? "allowlist";
   if (dmPolicy === "disabled") {
     logVerbose(`agent ${componentLabel}: blocked (DM policy disabled)`);
     try {
@@ -473,18 +473,6 @@ async function ensureDmComponentAuthorized(params: {
     : { allowed: false };
   if (allowMatch.allowed) {
     return true;
-  }
-
-  if (dmPolicy === "pairing") {
-    try {
-      await interaction.reply({
-        content: "Pairing is not available.",
-        ...replyOpts,
-      });
-    } catch {
-      // Interaction may have expired
-    }
-    return false;
   }
 
   logVerbose(`agent ${componentLabel}: blocked DM user ${user.id} (not in allowFrom)`);
