@@ -19,6 +19,9 @@ function mapActiveWorkerAgents(taskService: TaskRuntimeSupervisorOptions["taskSe
   for (const team of teams) {
     const members = taskService.listTeamMembers(team.id);
     for (const member of members) {
+      if (member.role !== "member") {
+        continue;
+      }
       const teamIds = active.get(member.agentId) ?? [];
       teamIds.push(team.id);
       active.set(member.agentId, teamIds);

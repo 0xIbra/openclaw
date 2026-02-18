@@ -141,6 +141,7 @@ import type {
   TaskSchema,
   TaskAttemptSchema,
   TaskClaimSchema,
+  TaskLeadStatusSchema,
   TasksAttemptChangedEventSchema,
   TasksAttemptFailParamsSchema,
   TasksAttemptFailResultSchema,
@@ -153,9 +154,11 @@ import type {
   TasksClaimNextResultSchema,
   TasksChangedEventSchema,
   TasksCreateParamsSchema,
+  TasksEscalatedEventSchema,
   TasksGetParamsSchema,
   TasksLeaseHeartbeatParamsSchema,
   TasksLeaseHeartbeatResultSchema,
+  TasksLeadChangedEventSchema,
   TasksListParamsSchema,
   TasksListResultSchema,
   TasksRequeueParamsSchema,
@@ -308,6 +311,7 @@ export type DeviceTokenRevokeParams = Static<typeof DeviceTokenRevokeParamsSchem
 export type Task = Static<typeof TaskSchema>;
 export type TaskClaim = Static<typeof TaskClaimSchema>;
 export type TaskAttempt = Static<typeof TaskAttemptSchema>;
+export type TaskLeadStatus = Static<typeof TaskLeadStatusSchema>;
 export type TasksListParams = Static<typeof TasksListParamsSchema>;
 export type TasksListResult = Static<typeof TasksListResultSchema>;
 export type TasksCreateParams = Static<typeof TasksCreateParamsSchema>;
@@ -329,6 +333,8 @@ export type TasksRequeueResult = Static<typeof TasksRequeueResultSchema>;
 export type TasksChangedEvent = Static<typeof TasksChangedEventSchema>;
 export type TasksClaimedEvent = Static<typeof TasksClaimedEventSchema>;
 export type TasksAttemptChangedEvent = Static<typeof TasksAttemptChangedEventSchema>;
+export type TasksLeadChangedEvent = Static<typeof TasksLeadChangedEventSchema>;
+export type TasksEscalatedEvent = Static<typeof TasksEscalatedEventSchema>;
 export type Team = Static<typeof TeamSchema>;
 export type TeamMember = Static<typeof TeamMemberSchema>;
 export type TeamWithMembersResult = Static<typeof TeamWithMembersResultSchema>;

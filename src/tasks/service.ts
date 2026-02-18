@@ -4,6 +4,8 @@ import type {
   BusMessageRecord,
   BusPublishInput,
   BusPublishResult,
+  LeadDelegationDecision,
+  LeadEscalationRecord,
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
@@ -29,6 +31,8 @@ import type {
   TaskRequeueInput,
   TaskRequeueResult,
   TaskRecord,
+  TaskQuestionThreadRecord,
+  TaskQuestionThreadStatus,
   TaskTransitionInput,
   TaskUpdateInput,
   TeamCreateInput,
@@ -361,6 +365,40 @@ export class TaskService {
     return removed;
   }
 
+  listTeamReadyTasks(teamId: string): TaskRecord[] {
+    const team = this.store.getTeam(requireNonEmpty(teamId, "teamId"));
+    if (!team || team.archivedAtMs != null) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
+    return this.store.listTeamReadyTasks(team.id);
+  }
+
+  listTeamActiveTasks(teamId: string): TaskRecord[] {
+    const team = this.store.getTeam(requireNonEmpty(teamId, "teamId"));
+    if (!team || team.archivedAtMs != null) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
+    return this.store.listTeamActiveTasks(team.id);
+  }
+
+  assignTaskToAgent(input: {
+    taskId: string;
+    assignedAgentId: string;
+    teamId?: string | null;
+  }): LeadDelegationDecision {
+    const nowMs = this.now();
+    const decision = this.store.assignTaskToAgent({
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      assignedAgentId: requireNonEmpty(input.assignedAgentId, "assignedAgentId"),
+      teamId: normalizeOptionalNullableString(input.teamId),
+      nowMs,
+    });
+    if (!decision) {
+      throw new TaskServiceError("conflict", "task assignment preconditions failed");
+    }
+    return decision;
+  }
+
   listProjectRepos(projectId: string): ProjectRepoRecord[] {
     const project = this.store.getProject(projectId);
     if (!project) {
@@ -453,10 +491,18 @@ export class TaskService {
     if (!Number.isFinite(maxAttempts) || maxAttempts < 1) {
       throw new TaskServiceError("invalid_input", "maxAttempts must be a positive integer");
     }
+    const teamId = normalizeOptionalNullableString(input.teamId);
+    if (teamId) {
+      const team = this.store.getTeam(teamId);
+      if (!team || team.archivedAtMs != null) {
+        throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+      }
+    }
 
     return this.store.createTask(
       {
         ...input,
+        teamId,
         title,
         description,
         parentTaskId,
@@ -519,6 +565,13 @@ export class TaskService {
     }
 
     const nowMs = this.now();
+    const teamId = normalizeOptionalNullableString(input.teamId);
+    if (teamId) {
+      const team = this.store.getTeam(teamId);
+      if (!team || team.archivedAtMs != null) {
+        throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+      }
+    }
     const updated = this.store.updateTask(input.id, {
       title: input.title ? requireNonEmpty(input.title, "task title") : undefined,
       description: input.description
@@ -532,6 +585,7 @@ export class TaskService {
         input.assignedAgentId === undefined
           ? undefined
           : normalizeOptionalNullableString(input.assignedAgentId),
+      team_id: input.teamId === undefined ? undefined : teamId,
       max_attempts: maxAttempts,
       relevant_paths_json:
         input.relevantPaths === undefined
@@ -742,6 +796,103 @@ export class TaskService {
     return this.store.expireStaleTaskClaims(this.now());
   }
 
+  openQuestionThread(input: {
+    teamId: string;
+    taskId?: string | null;
+    leadAgentId: string;
+    requesterAgentId: string;
+    questionMessageId: string;
+    reminderDelayMs: number;
+    escalationDelayMs: number;
+  }): TaskQuestionThreadRecord {
+    const nowMs = this.now();
+    return this.store.openQuestionThread(
+      {
+        teamId: requireNonEmpty(input.teamId, "teamId"),
+        taskId: normalizeOptionalNullableString(input.taskId),
+        leadAgentId: requireNonEmpty(input.leadAgentId, "leadAgentId"),
+        requesterAgentId: requireNonEmpty(input.requesterAgentId, "requesterAgentId"),
+        questionMessageId: requireNonEmpty(input.questionMessageId, "questionMessageId"),
+        openedAtMs: nowMs,
+        reminderDueAtMs: nowMs + Math.max(1, Math.floor(input.reminderDelayMs)),
+        escalateDueAtMs: nowMs + Math.max(1, Math.floor(input.escalationDelayMs)),
+      },
+      nowMs,
+    );
+  }
+
+  touchQuestionThread(input: {
+    threadId: string;
+    status?: TaskQuestionThreadStatus;
+    reminderDueAtMs?: number;
+    escalateDueAtMs?: number;
+    lastNotifiedAtMs?: number | null;
+    resolvedAtMs?: number | null;
+    answerMessageId?: string | null;
+  }): TaskQuestionThreadRecord {
+    const updated = this.store.updateQuestionThread(requireNonEmpty(input.threadId, "threadId"), {
+      status: input.status,
+      reminder_due_at_ms: input.reminderDueAtMs,
+      escalate_due_at_ms: input.escalateDueAtMs,
+      last_notified_at_ms: input.lastNotifiedAtMs,
+      answer_message_id: input.answerMessageId,
+      resolved_at_ms: input.resolvedAtMs,
+      updated_at_ms: this.now(),
+    });
+    if (!updated) {
+      throw new TaskServiceError("not_found", `question thread not found: ${input.threadId}`);
+    }
+    return updated;
+  }
+
+  markQuestionAnswered(input: {
+    threadId: string;
+    answerMessageId: string;
+  }): TaskQuestionThreadRecord {
+    const updated = this.store.markQuestionAnswered({
+      threadId: requireNonEmpty(input.threadId, "threadId"),
+      answerMessageId: requireNonEmpty(input.answerMessageId, "answerMessageId"),
+      nowMs: this.now(),
+    });
+    if (!updated) {
+      throw new TaskServiceError("not_found", `question thread not found: ${input.threadId}`);
+    }
+    return updated;
+  }
+
+  listDueQuestionReminders(nowMs?: number): TaskQuestionThreadRecord[] {
+    return this.store.listDueQuestionReminders(nowMs ?? this.now());
+  }
+
+  listDueEscalations(nowMs?: number): TaskQuestionThreadRecord[] {
+    return this.store.listDueEscalations(nowMs ?? this.now());
+  }
+
+  countOpenQuestionThreads(input: { teamId: string; leadAgentId: string }): number {
+    return this.store.countOpenQuestionThreads({
+      teamId: requireNonEmpty(input.teamId, "teamId"),
+      leadAgentId: requireNonEmpty(input.leadAgentId, "leadAgentId"),
+    });
+  }
+
+  markQuestionEscalated(threadId: string): LeadEscalationRecord {
+    const nowMs = this.now();
+    const updated = this.touchQuestionThread({
+      threadId,
+      status: "escalated",
+      resolvedAtMs: nowMs,
+    });
+    return {
+      threadId: updated.id,
+      teamId: updated.teamId,
+      taskId: updated.taskId,
+      leadAgentId: updated.leadAgentId,
+      requesterAgentId: updated.requesterAgentId,
+      questionMessageId: updated.questionMessageId,
+      escalatedAtMs: nowMs,
+    };
+  }
+
   publishBusMessage(input: BusPublishInput): BusPublishResult {
     const senderAgentId = requireNonEmpty(input.senderAgentId, "senderAgentId");
     const receiverAgentId = requireNonEmpty(input.receiverAgentId, "receiverAgentId");
@@ -755,6 +906,8 @@ export class TaskService {
         messageType,
         body,
         taskId: normalizeOptionalNullableString(input.taskId),
+        correlationId: normalizeOptionalNullableString(input.correlationId),
+        replyToMessageId: normalizeOptionalNullableString(input.replyToMessageId),
         subject: normalizeOptionalNullableString(input.subject),
         dedupeKey: normalizeOptionalNullableString(input.dedupeKey),
       },

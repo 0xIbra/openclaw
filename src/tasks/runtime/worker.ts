@@ -112,6 +112,48 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
     }
   };
 
+  const publishLifecycleMessage = (params: {
+    taskId: string;
+    attemptId: string;
+    teamId: string | null;
+    messageType: "progress" | "task:complete" | "task:failed";
+    summary: string;
+    errorText?: string | null;
+    metrics?: Record<string, unknown>;
+    changedFiles?: string[];
+  }) => {
+    if (!params.teamId) {
+      return;
+    }
+    const team = options.taskService.getTeam(params.teamId);
+    const leadAgentId = team?.leadAgentId?.trim();
+    if (!leadAgentId || leadAgentId === options.agentId) {
+      return;
+    }
+    try {
+      options.taskService.publishBusMessage({
+        senderAgentId: options.agentId,
+        receiverAgentId: leadAgentId,
+        taskId: params.taskId,
+        messageType: params.messageType,
+        subject: params.messageType,
+        body: params.summary,
+        payload: {
+          taskId: params.taskId,
+          attemptId: params.attemptId,
+          teamId: params.teamId,
+          agentId: options.agentId,
+          summary: params.summary,
+          errorText: params.errorText ?? null,
+          metrics: params.metrics ?? {},
+          changedFiles: params.changedFiles ?? [],
+        },
+      });
+    } catch {
+      // bus publish is best-effort
+    }
+  };
+
   const runSingleClaim = async (
     signal: AbortSignal,
     input: ReturnType<typeof options.taskService.claimNextTask>,
@@ -142,6 +184,13 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
         sessionBackend: "embedded",
       });
       checkpointAttempt(started.attempt.id, `Started task ${claimedTask.id}`);
+      publishLifecycleMessage({
+        taskId: started.task.id,
+        attemptId: started.attempt.id,
+        teamId: started.task.teamId,
+        messageType: "progress",
+        summary: `Started task ${started.task.id}`,
+      });
 
       heartbeatTimer = setInterval(() => {
         try {
@@ -218,7 +267,7 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
       }
 
       if (execution.status === "success") {
-        options.taskService.finishAttempt({
+        const finished = options.taskService.finishAttempt({
           taskId: started.task.id,
           claimId: claim.id,
           attemptId: started.attempt.id,
@@ -230,6 +279,15 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           testOutcome: execution.testOutcome,
           changedFiles: execution.changedFiles,
           metrics: persistedMetrics,
+        });
+        publishLifecycleMessage({
+          taskId: finished.task.id,
+          attemptId: finished.attempt.id,
+          teamId: finished.task.teamId,
+          messageType: "task:complete",
+          summary: executionSummary,
+          metrics: persistedMetrics,
+          changedFiles: execution.changedFiles,
         });
       } else {
         const failed = options.taskService.failAttempt({
@@ -245,6 +303,16 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           testOutcome: execution.testOutcome,
           changedFiles: execution.changedFiles,
           metrics: persistedMetrics,
+        });
+        publishLifecycleMessage({
+          taskId: failed.task.id,
+          attemptId: failed.attempt.id,
+          teamId: failed.task.teamId,
+          messageType: "task:failed",
+          summary: executionSummary,
+          errorText: execution.errorText,
+          metrics: persistedMetrics,
+          changedFiles: execution.changedFiles,
         });
 
         if (failed.retryEligible) {

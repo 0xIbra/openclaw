@@ -28,10 +28,12 @@ import { resolveMentionGatingWithBypass } from "../channels/mention-gating.js";
 import { recordInboundSession } from "../channels/session.js";
 import { loadConfig } from "../config/config.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../config/sessions.js";
+import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { logVerbose, shouldLogVerbose } from "../globals.js";
 import { recordChannelActivity } from "../infra/channel-activity.js";
-import { resolveAgentRoute } from "../routing/resolve-route.js";
+import { buildAgentSessionKey, resolveAgentRoute } from "../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../routing/session-key.js";
+import { resolveTeamLeadRoutingFromDefaultService } from "../tasks/team-routing.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import {
   firstDefined,
@@ -166,7 +168,7 @@ export const buildTelegramMessageContext = async ({
   const peerId = isGroup ? buildTelegramGroupPeerId(chatId, resolvedThreadId) : String(chatId);
   const parentPeer = buildTelegramParentPeer({ isGroup, resolvedThreadId, chatId });
   // Fresh config for bindings lookup; other routing inputs are payload-derived.
-  const route = resolveAgentRoute({
+  let route = resolveAgentRoute({
     cfg: loadConfig(),
     channel: "telegram",
     accountId: account.accountId,
@@ -176,15 +178,60 @@ export const buildTelegramMessageContext = async ({
     },
     parentPeer,
   });
-  const baseSessionKey = route.sessionKey;
+  let baseSessionKey = route.sessionKey;
   // DMs: use raw messageThreadId for thread sessions (not forum topic ids)
   const dmThreadId = threadSpec.scope === "dm" ? threadSpec.id : undefined;
-  const threadKeys =
+  let threadKeys =
     dmThreadId != null
       ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
       : null;
-  const sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
-  const mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+  let sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+  let mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+  const routingText = expandTextLinks(
+    msg.text ?? msg.caption ?? "",
+    msg.entities ?? msg.caption_entities,
+  ).trim();
+  let routedBodyText: string | null = null;
+  const teamRouting = resolveTeamLeadRoutingFromDefaultService(routingText);
+  if (teamRouting.kind === "ambiguous" || teamRouting.kind === "missing_lead") {
+    try {
+      await withTelegramApiErrorLogging({
+        operation: "sendMessage",
+        fn: () =>
+          bot.api.sendMessage(chatId, teamRouting.prompt, buildTypingThreadParams(replyThreadId)),
+      });
+    } catch (err) {
+      logVerbose(`telegram team lead disambiguation failed for chat ${chatId}: ${String(err)}`);
+    }
+    return null;
+  }
+  if (teamRouting.kind === "matched") {
+    route = {
+      ...route,
+      agentId: teamRouting.leadAgentId,
+      sessionKey: buildAgentSessionKey({
+        agentId: teamRouting.leadAgentId,
+        channel: "telegram",
+        accountId: account.accountId,
+        peer: {
+          kind: isGroup ? "group" : "direct",
+          id: peerId,
+        },
+      }),
+      mainSessionKey: resolveAgentMainSessionKey({
+        cfg,
+        agentId: teamRouting.leadAgentId,
+      }),
+    };
+    baseSessionKey = route.sessionKey;
+    threadKeys =
+      dmThreadId != null
+        ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
+        : null;
+    sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+    mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+    routedBodyText = teamRouting.rewrittenMessage;
+  }
   const effectiveDmAllow = normalizeAllowFromWithStore({ allowFrom, storeAllowFrom });
   const groupAllowOverride = firstDefined(topicConfig?.allowFrom, groupConfig?.allowFrom);
   const effectiveGroupAllow = normalizeAllowFromWithStore({
@@ -329,8 +376,7 @@ export const buildTelegramMessageContext = async ({
 
   const locationData = extractTelegramLocation(msg);
   const locationText = locationData ? formatLocationText(locationData) : undefined;
-  const rawTextSource = msg.text ?? msg.caption ?? "";
-  const rawText = expandTextLinks(rawTextSource, msg.entities ?? msg.caption_entities).trim();
+  const rawText = routedBodyText ?? routingText;
   const hasUserText = Boolean(rawText || locationText);
   let rawBody = [rawText, locationText].filter(Boolean).join("\n").trim();
   if (!rawBody) {

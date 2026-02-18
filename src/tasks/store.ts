@@ -5,6 +5,7 @@ import type {
   BusMessageRecord,
   BusPublishInput,
   BusPublishResult,
+  LeadDelegationDecision,
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
@@ -31,6 +32,9 @@ import type {
   TaskRequeueResult,
   TaskRecord,
   TaskStatus,
+  TaskQuestionThreadOpenInput,
+  TaskQuestionThreadRecord,
+  TaskQuestionThreadStatus,
   TeamListFilters,
   TeamMemberRecord,
   TeamMemberUpsertInput,
@@ -145,6 +149,8 @@ type BusMessageRow = {
   sender_agent_id: string;
   receiver_agent_id: string;
   task_id: string | null;
+  correlation_id: string | null;
+  reply_to_message_id: string | null;
   message_type: string;
   subject: string | null;
   body: string;
@@ -159,6 +165,24 @@ type BusMessageRow = {
   lease_expires_at_ms: number | null;
   acked_at_ms: number | null;
   expires_at_ms: number | null;
+};
+
+type TaskQuestionThreadRow = {
+  id: string;
+  team_id: string;
+  task_id: string | null;
+  lead_agent_id: string;
+  requester_agent_id: string;
+  question_message_id: string;
+  status: TaskQuestionThreadStatus;
+  opened_at_ms: number;
+  reminder_due_at_ms: number;
+  escalate_due_at_ms: number;
+  last_notified_at_ms: number | null;
+  answer_message_id: string | null;
+  resolved_at_ms: number | null;
+  created_at_ms: number;
+  updated_at_ms: number;
 };
 
 type TaskRowPatch = Partial<{
@@ -337,6 +361,8 @@ function mapBusMessageRow(row: BusMessageRow): BusMessageRecord {
     senderAgentId: row.sender_agent_id,
     receiverAgentId: row.receiver_agent_id,
     taskId: row.task_id ?? null,
+    correlationId: row.correlation_id ?? null,
+    replyToMessageId: row.reply_to_message_id ?? null,
     messageType: row.message_type,
     subject: row.subject ?? null,
     body: row.body,
@@ -351,6 +377,26 @@ function mapBusMessageRow(row: BusMessageRow): BusMessageRecord {
     leaseExpiresAtMs: row.lease_expires_at_ms == null ? null : Number(row.lease_expires_at_ms),
     ackedAtMs: row.acked_at_ms == null ? null : Number(row.acked_at_ms),
     expiresAtMs: row.expires_at_ms == null ? null : Number(row.expires_at_ms),
+  };
+}
+
+function mapTaskQuestionThreadRow(row: TaskQuestionThreadRow): TaskQuestionThreadRecord {
+  return {
+    id: row.id,
+    teamId: row.team_id,
+    taskId: row.task_id ?? null,
+    leadAgentId: row.lead_agent_id,
+    requesterAgentId: row.requester_agent_id,
+    questionMessageId: row.question_message_id,
+    status: row.status,
+    openedAtMs: Number(row.opened_at_ms),
+    reminderDueAtMs: Number(row.reminder_due_at_ms),
+    escalateDueAtMs: Number(row.escalate_due_at_ms),
+    lastNotifiedAtMs: row.last_notified_at_ms == null ? null : Number(row.last_notified_at_ms),
+    answerMessageId: row.answer_message_id ?? null,
+    resolvedAtMs: row.resolved_at_ms == null ? null : Number(row.resolved_at_ms),
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
   };
 }
 
@@ -969,6 +1015,109 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     return mapTaskRow({ row, dependsOnTaskIds, blockedByTaskIds });
   }
 
+  function listTeamReadyTasks(teamId: string): TaskRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT t.*
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         WHERE t.team_id = ?
+           AND t.status IN ('backlog', 'assigned')
+           AND p.archived_at_ms IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM task_dependencies d
+             JOIN tasks dep ON dep.id = d.depends_on_task_id
+             WHERE d.task_id = t.id
+               AND dep.status != 'done'
+           )
+         ORDER BY
+           CASE t.priority
+             WHEN 'critical' THEN 0
+             WHEN 'high' THEN 1
+             WHEN 'medium' THEN 2
+             WHEN 'low' THEN 3
+             ELSE 4
+           END ASC,
+           t.updated_at_ms ASC`,
+      )
+      .all(teamId) as TaskRow[];
+    const ids = rows.map((row) => row.id);
+    const dependsByTask = listDependencyIdsByTaskIds(ids);
+    const blockedByTask = listIncompleteDependencyIdsByTaskIds(ids);
+    return rows.map((row) =>
+      mapTaskRow({
+        row,
+        dependsOnTaskIds: dependsByTask.get(row.id) ?? [],
+        blockedByTaskIds: blockedByTask.get(row.id) ?? [],
+      }),
+    );
+  }
+
+  function listTeamActiveTasks(teamId: string): TaskRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT t.*
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id
+         WHERE t.team_id = ?
+           AND t.status IN ('assigned', 'running', 'review', 'blocked', 'failed')
+           AND p.archived_at_ms IS NULL
+         ORDER BY t.updated_at_ms DESC`,
+      )
+      .all(teamId) as TaskRow[];
+    const ids = rows.map((row) => row.id);
+    const dependsByTask = listDependencyIdsByTaskIds(ids);
+    const blockedByTask = listIncompleteDependencyIdsByTaskIds(ids);
+    return rows.map((row) =>
+      mapTaskRow({
+        row,
+        dependsOnTaskIds: dependsByTask.get(row.id) ?? [],
+        blockedByTaskIds: blockedByTask.get(row.id) ?? [],
+      }),
+    );
+  }
+
+  function assignTaskToAgent(input: {
+    taskId: string;
+    assignedAgentId: string;
+    teamId?: string | null;
+    nowMs: number;
+  }): LeadDelegationDecision | null {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const task = getTask(input.taskId);
+      if (!task) {
+        db.exec("COMMIT");
+        return null;
+      }
+      if (countIncompleteDependencies(task.id) > 0) {
+        db.exec("COMMIT");
+        return null;
+      }
+      const nextTeamId = input.teamId === undefined ? task.teamId : input.teamId;
+      db.prepare(
+        `UPDATE tasks
+         SET assigned_agent_id = ?,
+             team_id = ?,
+             status = 'assigned',
+             updated_at_ms = ?
+         WHERE id = ?`,
+      ).run(input.assignedAgentId, nextTeamId ?? null, input.nowMs, input.taskId);
+
+      db.exec("COMMIT");
+      return {
+        teamId: nextTeamId ?? null,
+        taskId: input.taskId,
+        assignedAgentId: input.assignedAgentId,
+        reason: "lead_assignment",
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function createTask(input: TaskCreateInput, nowMs: number): TaskRecord {
     const id = randomUUID();
     db.prepare(
@@ -1006,7 +1155,7 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
       input.status ?? "created",
       input.parentTaskId ?? null,
       input.assignedAgentId ?? null,
-      null,
+      input.teamId ?? null,
       null,
       input.maxAttempts ?? 3,
       0,
@@ -1798,6 +1947,145 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     }
   }
 
+  function openQuestionThread(
+    input: TaskQuestionThreadOpenInput,
+    nowMs: number,
+  ): TaskQuestionThreadRecord {
+    const existing = db
+      .prepare(
+        `SELECT *
+         FROM task_question_threads
+         WHERE question_message_id = ?
+         LIMIT 1`,
+      )
+      .get(input.questionMessageId) as TaskQuestionThreadRow | undefined;
+    if (existing) {
+      return mapTaskQuestionThreadRow(existing);
+    }
+
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO task_question_threads (
+        id,
+        team_id,
+        task_id,
+        lead_agent_id,
+        requester_agent_id,
+        question_message_id,
+        status,
+        opened_at_ms,
+        reminder_due_at_ms,
+        escalate_due_at_ms,
+        last_notified_at_ms,
+        answer_message_id,
+        resolved_at_ms,
+        created_at_ms,
+        updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, NULL, NULL, NULL, ?, ?)`,
+    ).run(
+      id,
+      input.teamId,
+      input.taskId ?? null,
+      input.leadAgentId,
+      input.requesterAgentId,
+      input.questionMessageId,
+      input.openedAtMs,
+      input.reminderDueAtMs,
+      input.escalateDueAtMs,
+      nowMs,
+      nowMs,
+    );
+
+    const created = db
+      .prepare(`SELECT * FROM task_question_threads WHERE id = ? LIMIT 1`)
+      .get(id) as TaskQuestionThreadRow | undefined;
+    if (!created) {
+      throw new Error(`failed to create task question thread: ${id}`);
+    }
+    return mapTaskQuestionThreadRow(created);
+  }
+
+  function updateQuestionThread(
+    id: string,
+    patch: Partial<{
+      status: TaskQuestionThreadStatus;
+      reminder_due_at_ms: number;
+      escalate_due_at_ms: number;
+      last_notified_at_ms: number | null;
+      answer_message_id: string | null;
+      resolved_at_ms: number | null;
+      updated_at_ms: number;
+    }>,
+  ): TaskQuestionThreadRecord | null {
+    const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
+    if (entries.length === 0) {
+      const existing = db
+        .prepare(`SELECT * FROM task_question_threads WHERE id = ? LIMIT 1`)
+        .get(id) as TaskQuestionThreadRow | undefined;
+      return existing ? mapTaskQuestionThreadRow(existing) : null;
+    }
+    const setSql = entries.map(([column]) => `${column} = ?`).join(", ");
+    const values = entries.map(([, value]) => value);
+    db.prepare(`UPDATE task_question_threads SET ${setSql} WHERE id = ?`).run(...values, id);
+    const updated = db
+      .prepare(`SELECT * FROM task_question_threads WHERE id = ? LIMIT 1`)
+      .get(id) as TaskQuestionThreadRow | undefined;
+    return updated ? mapTaskQuestionThreadRow(updated) : null;
+  }
+
+  function markQuestionAnswered(input: {
+    threadId: string;
+    answerMessageId: string;
+    nowMs: number;
+  }): TaskQuestionThreadRecord | null {
+    return updateQuestionThread(input.threadId, {
+      status: "answered",
+      answer_message_id: input.answerMessageId,
+      resolved_at_ms: input.nowMs,
+      updated_at_ms: input.nowMs,
+    });
+  }
+
+  function listDueQuestionReminders(nowMs: number): TaskQuestionThreadRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM task_question_threads
+         WHERE status = 'open'
+           AND reminder_due_at_ms <= ?
+           AND (last_notified_at_ms IS NULL OR last_notified_at_ms < reminder_due_at_ms)
+         ORDER BY reminder_due_at_ms ASC`,
+      )
+      .all(nowMs) as TaskQuestionThreadRow[];
+    return rows.map(mapTaskQuestionThreadRow);
+  }
+
+  function listDueEscalations(nowMs: number): TaskQuestionThreadRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM task_question_threads
+         WHERE status = 'open'
+           AND escalate_due_at_ms <= ?
+         ORDER BY escalate_due_at_ms ASC`,
+      )
+      .all(nowMs) as TaskQuestionThreadRow[];
+    return rows.map(mapTaskQuestionThreadRow);
+  }
+
+  function countOpenQuestionThreads(input: { teamId: string; leadAgentId: string }): number {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM task_question_threads
+         WHERE team_id = ?
+           AND lead_agent_id = ?
+           AND status = 'open'`,
+      )
+      .get(input.teamId, input.leadAgentId) as { count?: number } | undefined;
+    return Number(row?.count ?? 0);
+  }
+
   function getBusMessage(id: string): BusMessageRecord | null {
     const row = db.prepare(`SELECT * FROM task_bus_messages WHERE id = ? LIMIT 1`).get(id) as
       | BusMessageRow
@@ -1819,6 +2107,8 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
           sender_agent_id,
           receiver_agent_id,
           task_id,
+          correlation_id,
+          reply_to_message_id,
           message_type,
           subject,
           body,
@@ -1833,12 +2123,14 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
           lease_expires_at_ms,
           acked_at_ms,
           expires_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, NULL, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, NULL, ?)`,
       ).run(
         id,
         input.senderAgentId,
         input.receiverAgentId,
         input.taskId ?? null,
+        input.correlationId ?? null,
+        input.replyToMessageId ?? null,
         input.messageType,
         input.subject ?? null,
         input.body,
@@ -2021,6 +2313,9 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     upsertProjectRepo,
     listTasks,
     getTask,
+    listTeamReadyTasks,
+    listTeamActiveTasks,
+    assignTaskToAgent,
     createTask,
     updateTask,
     replaceTaskDependencies,
@@ -2040,6 +2335,12 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     finishAttempt,
     failAttempt,
     requeueTask,
+    openQuestionThread,
+    updateQuestionThread,
+    markQuestionAnswered,
+    listDueQuestionReminders,
+    listDueEscalations,
+    countOpenQuestionThreads,
     getBusMessage,
     publishBusMessage,
     pullBusMessages,

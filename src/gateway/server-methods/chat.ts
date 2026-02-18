@@ -10,7 +10,9 @@ import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
+import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
+import { resolveTeamLeadRouting } from "../../tasks/team-routing.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import {
   abortChatRunById,
@@ -569,7 +571,26 @@ export const chatHandlers: GatewayRequestHandlers = {
       }
     }
     const rawSessionKey = p.sessionKey;
-    const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+    let { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+    const routing =
+      context.taskService != null
+        ? resolveTeamLeadRouting({
+            text: rawMessage,
+            taskService: context.taskService,
+          })
+        : ({ kind: "none" } as const);
+    if (routing.kind === "ambiguous" || routing.kind === "missing_lead") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, routing.prompt));
+      return;
+    }
+    if (routing.kind === "matched") {
+      const routedSessionKey = resolveAgentMainSessionKey({
+        cfg,
+        agentId: routing.leadAgentId,
+      });
+      ({ cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(routedSessionKey));
+      parsedMessage = routing.rewrittenMessage;
+    }
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,

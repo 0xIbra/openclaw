@@ -48,6 +48,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import {
   createEmbeddedTaskExecutorFactory,
+  createTaskLeadSupervisor,
   createTaskRuntimeSupervisor,
 } from "../tasks/runtime/index.js";
 import { createTaskService } from "../tasks/service.js";
@@ -418,7 +419,19 @@ export async function startGatewayServer(
         },
       })
     : null;
+  const taskLeadSupervisor = taskRuntimeEnabled
+    ? createTaskLeadSupervisor({
+        taskService,
+        onLeadEvent: (event) => {
+          broadcast("tasks.lead.changed", event, { dropIfSlow: true });
+        },
+        onEscalation: (event) => {
+          broadcast("tasks.escalated", event, { dropIfSlow: true });
+        },
+      })
+    : null;
   taskRuntimeSupervisor?.start();
+  taskLeadSupervisor?.start();
 
   const channelManager = createChannelManager({
     loadConfig,
@@ -707,6 +720,7 @@ export async function startGatewayServer(
     cron,
     heartbeatRunner,
     taskRuntimeSupervisor,
+    taskLeadSupervisor,
     nodePresenceTimers,
     broadcast,
     tickInterval,

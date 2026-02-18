@@ -132,6 +132,8 @@ export const GATEWAY_EVENTS = [
   "tasks.claimed",
   "tasks.attempt.changed",
   "tasks.worker.changed",
+  "tasks.lead.changed",
+  "tasks.escalated",
   "teams.changed",
   "bus.message",
   "node.pair.requested",

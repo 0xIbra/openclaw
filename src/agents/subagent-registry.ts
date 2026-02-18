@@ -29,6 +29,7 @@ export type SubagentRunRecord = {
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
   suppressAnnounceReason?: "steer-restart" | "killed";
+  runtimeSource?: "sessions_spawn" | "task_runtime";
 };
 
 const subagentRuns = new Map<string, SubagentRunRecord>();
@@ -53,9 +54,17 @@ function suppressAnnounceForSteerRestart(entry?: SubagentRunRecord) {
   return entry?.suppressAnnounceReason === "steer-restart";
 }
 
+function suppressAnnounceForRuntimeSource(entry?: SubagentRunRecord) {
+  return entry?.runtimeSource === "task_runtime";
+}
+
 function startSubagentAnnounceCleanupFlow(runId: string, entry: SubagentRunRecord): boolean {
   if (!beginSubagentCleanup(runId)) {
     return false;
+  }
+  if (suppressAnnounceForRuntimeSource(entry)) {
+    finalizeSubagentCleanup(runId, entry.cleanup, true);
+    return true;
   }
   const requesterOrigin = normalizeDeliveryContext(entry.requesterOrigin);
   void runSubagentAnnounceFlow({
@@ -412,6 +421,7 @@ export function registerSubagentRun(params: {
   label?: string;
   model?: string;
   runTimeoutSeconds?: number;
+  runtimeSource?: "sessions_spawn" | "task_runtime";
 }) {
   const now = Date.now();
   const cfg = loadConfig();
@@ -435,6 +445,7 @@ export function registerSubagentRun(params: {
     startedAt: now,
     archiveAtMs,
     cleanupHandled: false,
+    runtimeSource: params.runtimeSource ?? "sessions_spawn",
   });
   ensureListener();
   persistSubagentRuns();

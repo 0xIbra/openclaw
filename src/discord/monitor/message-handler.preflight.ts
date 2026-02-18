@@ -18,12 +18,14 @@ import { resolveControlCommandGate } from "../../channels/command-gating.js";
 import { logInboundDrop } from "../../channels/logging.js";
 import { resolveMentionGatingWithBypass } from "../../channels/mention-gating.js";
 import { loadConfig } from "../../config/config.js";
+import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import { logVerbose, shouldLogVerbose } from "../../globals.js";
 import { recordChannelActivity } from "../../infra/channel-activity.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { logDebug } from "../../logger.js";
 import { getChildLogger } from "../../logging.js";
-import { resolveAgentRoute } from "../../routing/resolve-route.js";
+import { buildAgentSessionKey, resolveAgentRoute } from "../../routing/resolve-route.js";
+import { resolveTeamLeadRoutingFromDefaultService } from "../../tasks/team-routing.js";
 import { fetchPluralKitMessageInfo } from "../pluralkit.js";
 import { sendMessageDiscord } from "../send.js";
 import {
@@ -169,10 +171,10 @@ export async function preflightDiscordMessage(
   }
 
   const botId = params.botUserId;
-  const baseText = resolveDiscordMessageText(message, {
+  let baseText = resolveDiscordMessageText(message, {
     includeForwarded: false,
   });
-  const messageText = resolveDiscordMessageText(message, {
+  let messageText = resolveDiscordMessageText(message, {
     includeForwarded: true,
   });
   recordChannelActivity({
@@ -211,7 +213,7 @@ export async function preflightDiscordMessage(
   const memberRoleIds = Array.isArray(params.data.rawMember?.roles)
     ? params.data.rawMember.roles.map((roleId: string) => String(roleId))
     : [];
-  const route = resolveAgentRoute({
+  let route = resolveAgentRoute({
     cfg: loadConfig(),
     channel: "discord",
     accountId: params.accountId,
@@ -224,6 +226,43 @@ export async function preflightDiscordMessage(
     // Pass parent peer for thread binding inheritance
     parentPeer: earlyThreadParentId ? { kind: "channel", id: earlyThreadParentId } : undefined,
   });
+  const teamRouting = resolveTeamLeadRoutingFromDefaultService(baseText);
+  if (teamRouting.kind === "ambiguous" || teamRouting.kind === "missing_lead") {
+    const target = isDirectMessage ? `user:${author.id}` : `channel:${messageChannelId}`;
+    try {
+      await sendMessageDiscord(target, teamRouting.prompt, {
+        token: params.token,
+        rest: params.client.rest,
+        accountId: params.accountId,
+      });
+    } catch (err) {
+      logVerbose(`discord: team lead disambiguation failed for ${message.id}: ${String(err)}`);
+    }
+    return null;
+  }
+  if (teamRouting.kind === "matched") {
+    const directPeer = isDirectMessage
+      ? { kind: "direct" as const, id: author.id }
+      : isGroupDm
+        ? { kind: "group" as const, id: messageChannelId }
+        : { kind: "channel" as const, id: messageChannelId };
+    route = {
+      ...route,
+      agentId: teamRouting.leadAgentId,
+      sessionKey: buildAgentSessionKey({
+        agentId: teamRouting.leadAgentId,
+        channel: "discord",
+        accountId: params.accountId,
+        peer: directPeer,
+      }),
+      mainSessionKey: resolveAgentMainSessionKey({
+        cfg: params.cfg,
+        agentId: teamRouting.leadAgentId,
+      }),
+    };
+    baseText = teamRouting.rewrittenMessage;
+    messageText = teamRouting.rewrittenMessage;
+  }
   const mentionRegexes = buildMentionRegexes(params.cfg, route.agentId);
   const explicitlyMentioned = Boolean(
     botId && message.mentionedUsers?.some((user: User) => user.id === botId),

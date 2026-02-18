@@ -378,3 +378,51 @@ export const TasksWorkerChangedEventSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+export const TaskLeadStateSchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("processing"),
+  Type.Literal("delegating"),
+  Type.Literal("waiting"),
+  Type.Literal("paused"),
+]);
+
+export const TaskLeadStatusSchema = Type.Object(
+  {
+    teamId: NonEmptyString,
+    teamName: NonEmptyString,
+    leadAgentId: NonEmptyString,
+    state: TaskLeadStateSchema,
+    lastError: Type.Union([Type.String(), Type.Null()]),
+    lastPolledAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+    waitingQuestionCount: Type.Integer({ minimum: 0 }),
+    updatedAtMs: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksLeadChangedEventSchema = Type.Object(
+  {
+    reason: Type.Union([
+      Type.Literal("started"),
+      Type.Literal("status"),
+      Type.Literal("stopped"),
+      Type.Literal("delegated"),
+      Type.Literal("escalated"),
+    ]),
+    lead: TaskLeadStatusSchema,
+    payload: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksEscalatedEventSchema = Type.Object(
+  {
+    teamId: NonEmptyString,
+    leadAgentId: NonEmptyString,
+    threadId: NonEmptyString,
+    taskId: Type.Union([Type.String(), Type.Null()]),
+    requesterAgentId: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);

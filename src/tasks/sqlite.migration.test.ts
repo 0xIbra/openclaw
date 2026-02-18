@@ -154,7 +154,7 @@ describe("task sqlite schema migration", () => {
     const db = openTaskDatabase({ dbPath });
     initializeTaskSchema(db);
 
-    expect(getTaskSchemaVersion(db)).toBe(3);
+    expect(getTaskSchemaVersion(db)).toBe(4);
 
     const projectCount = db.prepare(`SELECT COUNT(*) as count FROM projects`).get() as {
       count: number;

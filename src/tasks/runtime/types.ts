@@ -105,3 +105,59 @@ export type TaskRuntimeSupervisor = {
   getWorkerStatuses: () => TaskWorkerStatus[];
   reconcileNow: () => Promise<void>;
 };
+
+export type TaskLeadState = "idle" | "processing" | "delegating" | "waiting" | "paused";
+
+export type TaskLeadStatus = {
+  teamId: string;
+  teamName: string;
+  leadAgentId: string;
+  state: TaskLeadState;
+  lastError: string | null;
+  lastPolledAtMs: number | null;
+  waitingQuestionCount: number;
+  updatedAtMs: number;
+};
+
+export type TaskLeadEventReason = "started" | "status" | "stopped" | "delegated" | "escalated";
+
+export type TaskLeadEvent = {
+  reason: TaskLeadEventReason;
+  lead: TaskLeadStatus;
+  payload?: Record<string, unknown>;
+};
+
+export type TaskLeadOptions = {
+  taskService: TaskService;
+  teamId: string;
+  teamName: string;
+  leadAgentId: string;
+  pollMs?: number;
+  busVisibilityTimeoutMs?: number;
+  questionReminderMs?: number;
+  questionEscalationMs?: number;
+  now?: () => number;
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  onEvent?: (event: TaskLeadEvent) => void;
+};
+
+export type TaskLead = {
+  start: () => void;
+  stop: () => Promise<void>;
+  getStatus: () => TaskLeadStatus;
+};
+
+export type TaskLeadSupervisorOptions = {
+  taskService: TaskService;
+  createLead?: (options: TaskLeadOptions) => TaskLead;
+  reconcileIntervalMs?: number;
+  onLeadEvent?: (event: TaskLeadEvent) => void;
+  onEscalation?: (event: Record<string, unknown>) => void;
+};
+
+export type TaskLeadSupervisor = {
+  start: () => void;
+  stop: () => Promise<void>;
+  getLeadStatuses: () => TaskLeadStatus[];
+  reconcileNow: () => Promise<void>;
+};

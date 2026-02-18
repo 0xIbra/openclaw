@@ -93,15 +93,13 @@ describe("task runtime supervisor", () => {
     });
 
     supervisor.start();
-    await waitFor(
-      () => startedAgents.includes("lead-agent") && startedAgents.includes("member-agent"),
-    );
+    await waitFor(() => startedAgents.includes("member-agent"));
     expect(
       supervisor
         .getWorkerStatuses()
         .map((entry) => entry.agentId)
         .toSorted(),
-    ).toEqual(["lead-agent", "member-agent"]);
+    ).toEqual(["member-agent"]);
 
     const removed = service.removeTeamMember(team.id, "member-agent");
     expect(removed).toBe(true);
@@ -116,7 +114,6 @@ describe("task runtime supervisor", () => {
 
     await supervisor.stop();
     expect(stoppedAgents).toContain("member-agent");
-    expect(stoppedAgents).toContain("lead-agent");
     service.close();
   });
 });

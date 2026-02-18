@@ -42,6 +42,7 @@ export const BUS_MESSAGE_STATE_VALUES = [
   "expired",
   "dead_letter",
 ] as const;
+export const TASK_QUESTION_THREAD_STATUS_VALUES = ["open", "answered", "escalated"] as const;
 
 export type TaskType = (typeof TASK_TYPE_VALUES)[number];
 export type TaskPriority = (typeof TASK_PRIORITY_VALUES)[number];
@@ -51,6 +52,7 @@ export type TaskBoardStatus = (typeof TASK_BOARD_STATUS_VALUES)[number];
 export type TeamMemberRole = (typeof TEAM_MEMBER_ROLE_VALUES)[number];
 export type TaskClaimState = (typeof TASK_CLAIM_STATE_VALUES)[number];
 export type BusMessageState = (typeof BUS_MESSAGE_STATE_VALUES)[number];
+export type TaskQuestionThreadStatus = (typeof TASK_QUESTION_THREAD_STATUS_VALUES)[number];
 
 export type TaskCreatedBy = string;
 
@@ -342,6 +344,8 @@ export type BusMessageRecord = {
   senderAgentId: string;
   receiverAgentId: string;
   taskId: string | null;
+  correlationId: string | null;
+  replyToMessageId: string | null;
   messageType: string;
   subject: string | null;
   body: string;
@@ -362,6 +366,8 @@ export type BusPublishInput = {
   senderAgentId: string;
   receiverAgentId: string;
   taskId?: string | null;
+  correlationId?: string | null;
+  replyToMessageId?: string | null;
   messageType: string;
   subject?: string | null;
   body: string;
@@ -394,8 +400,55 @@ export type BusAckInput = {
   ackToken: string;
 };
 
+export type TaskQuestionThreadRecord = {
+  id: string;
+  teamId: string;
+  taskId: string | null;
+  leadAgentId: string;
+  requesterAgentId: string;
+  questionMessageId: string;
+  status: TaskQuestionThreadStatus;
+  openedAtMs: number;
+  reminderDueAtMs: number;
+  escalateDueAtMs: number;
+  lastNotifiedAtMs: number | null;
+  answerMessageId: string | null;
+  resolvedAtMs: number | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type TaskQuestionThreadOpenInput = {
+  teamId: string;
+  taskId?: string | null;
+  leadAgentId: string;
+  requesterAgentId: string;
+  questionMessageId: string;
+  openedAtMs: number;
+  reminderDueAtMs: number;
+  escalateDueAtMs: number;
+};
+
+export type LeadDelegationDecision = {
+  teamId: string | null;
+  taskId: string;
+  assignedAgentId: string;
+  reason: string;
+};
+
+export type LeadEscalationRecord = {
+  threadId: string;
+  teamId: string;
+  taskId: string | null;
+  leadAgentId: string;
+  requesterAgentId: string;
+  questionMessageId: string;
+  escalatedAtMs: number;
+};
+
 export type TaskCreateInput = {
   projectId: string;
+  teamId?: string | null;
   title: string;
   description: string;
   type: TaskType;
@@ -413,6 +466,7 @@ export type TaskCreateInput = {
 
 export type TaskUpdateInput = {
   id: string;
+  teamId?: string | null;
   title?: string;
   description?: string;
   type?: TaskType;

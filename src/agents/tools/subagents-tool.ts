@@ -425,7 +425,8 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
           const runtime = formatDurationCompact(runtimeMs);
           const label = truncateLine(resolveRunLabel(entry), 48);
           const task = truncateLine(entry.task.trim(), 72);
-          const line = `${index}. ${label} (${resolveModelDisplay(sessionEntry, entry.model)}, ${runtime}${usageText ? `, ${usageText}` : ""}) ${status}${task.toLowerCase() !== label.toLowerCase() ? ` - ${task}` : ""}`;
+          const source = entry.runtimeSource === "task_runtime" ? "task-runtime" : "sessions-spawn";
+          const line = `${index}. ${label} (${resolveModelDisplay(sessionEntry, entry.model)}, ${runtime}${usageText ? `, ${usageText}` : ""}, ${source}) ${status}${task.toLowerCase() !== label.toLowerCase() ? ` - ${task}` : ""}`;
           const baseView = {
             index,
             runId: entry.runId,
@@ -438,6 +439,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
             model: resolveModelRef(sessionEntry) || entry.model,
             totalTokens,
             startedAt: entry.startedAt,
+            runtimeSource: entry.runtimeSource ?? "sessions_spawn",
           };
           index += 1;
           return { line, view: entry.endedAt ? { ...baseView, endedAt: entry.endedAt } : baseView };

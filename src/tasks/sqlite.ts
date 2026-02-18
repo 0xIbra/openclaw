@@ -7,7 +7,7 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 
 export type TaskDatabase = DatabaseSync;
 
-export const TASK_SCHEMA_VERSION = 3;
+export const TASK_SCHEMA_VERSION = 4;
 
 function tableExists(db: TaskDatabase, tableName: string): boolean {
   const row = db
@@ -494,6 +494,64 @@ function migrateTaskSchemaV2ToV3(db: TaskDatabase): void {
   }
 }
 
+function migrateTaskSchemaV3ToV4(db: TaskDatabase): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS task_question_threads (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL,
+        task_id TEXT,
+        lead_agent_id TEXT NOT NULL,
+        requester_agent_id TEXT NOT NULL,
+        question_message_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'answered', 'escalated')),
+        opened_at_ms INTEGER NOT NULL,
+        reminder_due_at_ms INTEGER NOT NULL,
+        escalate_due_at_ms INTEGER NOT NULL,
+        last_notified_at_ms INTEGER,
+        answer_message_id TEXT,
+        resolved_at_ms INTEGER,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+        FOREIGN KEY(question_message_id) REFERENCES task_bus_messages(id) ON DELETE CASCADE,
+        FOREIGN KEY(answer_message_id) REFERENCES task_bus_messages(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_question_threads_team_status_due
+        ON task_question_threads(team_id, status, reminder_due_at_ms, escalate_due_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_question_threads_due_reminder
+        ON task_question_threads(status, reminder_due_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_question_threads_due_escalate
+        ON task_question_threads(status, escalate_due_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_question_threads_task
+        ON task_question_threads(task_id, status);
+    `);
+
+    ensureColumn(db, "task_bus_messages", "correlation_id", "correlation_id TEXT");
+    ensureColumn(db, "task_bus_messages", "reply_to_message_id", "reply_to_message_id TEXT");
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_task_bus_receiver_correlation
+        ON task_bus_messages(receiver_agent_id, correlation_id, created_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_bus_reply_to
+        ON task_bus_messages(reply_to_message_id, created_at_ms);
+    `);
+
+    setTaskSchemaVersion(db, 4);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function initializeTaskSchema(db: TaskDatabase): void {
   db.exec("PRAGMA foreign_keys = ON;");
   initializeBaseSchema(db);
@@ -509,6 +567,9 @@ export function initializeTaskSchema(db: TaskDatabase): void {
   }
   if (getTaskSchemaVersion(db) < 3) {
     migrateTaskSchemaV2ToV3(db);
+  }
+  if (getTaskSchemaVersion(db) < 4) {
+    migrateTaskSchemaV3ToV4(db);
   }
 
   if (getTaskSchemaVersion(db) < TASK_SCHEMA_VERSION) {
