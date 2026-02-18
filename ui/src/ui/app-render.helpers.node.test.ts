@@ -39,9 +39,9 @@ describe("parseSessionKey", () => {
   });
 
   it("identifies direct chat with known channel", () => {
-    expect(parseSessionKey("agent:main:bluebubbles:direct:+19257864429")).toEqual({
+    expect(parseSessionKey("agent:main:discord:direct:user123")).toEqual({
       prefix: "",
-      fallbackName: "iMessage · +19257864429",
+      fallbackName: "Discord · user123",
     });
   });
 
@@ -66,14 +66,10 @@ describe("parseSessionKey", () => {
     });
   });
 
-  it("identifies channel-prefixed legacy keys", () => {
-    expect(parseSessionKey("bluebubbles:g-agent-main-bluebubbles-direct-+19257864429")).toEqual({
-      prefix: "",
-      fallbackName: "iMessage Session",
-    });
+  it("treats legacy channel-prefixed keys as unknown patterns", () => {
     expect(parseSessionKey("discord:123:456")).toEqual({
       prefix: "",
-      fallbackName: "Discord Session",
+      fallbackName: "discord:123:456",
     });
   });
 
@@ -116,13 +112,13 @@ describe("resolveSessionDisplayName", () => {
   });
 
   it("parses direct chat key with channel", () => {
-    expect(resolveSessionDisplayName("agent:main:bluebubbles:direct:+19257864429")).toBe(
-      "iMessage · +19257864429",
+    expect(resolveSessionDisplayName("agent:main:discord:direct:user123")).toBe(
+      "Discord · user123",
     );
   });
 
-  it("parses channel-prefixed legacy key", () => {
-    expect(resolveSessionDisplayName("discord:123:456")).toBe("Discord Session");
+  it("returns raw key for legacy channel-prefixed key", () => {
+    expect(resolveSessionDisplayName("discord:123:456")).toBe("discord:123:456");
   });
 
   it("returns raw key for unknown patterns", () => {
@@ -186,7 +182,7 @@ describe("resolveSessionDisplayName", () => {
   it("uses parsed fallback when whitespace-only label and no displayName", () => {
     expect(
       resolveSessionDisplayName("discord:123:456", row({ key: "discord:123:456", label: "   " })),
-    ).toBe("Discord Session");
+    ).toBe("discord:123:456");
   });
 
   it("trims label and displayName", () => {
@@ -237,8 +233,8 @@ describe("resolveSessionDisplayName", () => {
   it("does not prefix non-typed sessions with labels", () => {
     expect(
       resolveSessionDisplayName(
-        "agent:main:bluebubbles:direct:+19257864429",
-        row({ key: "agent:main:bluebubbles:direct:+19257864429", label: "Tyler" }),
+        "agent:main:discord:direct:user123",
+        row({ key: "agent:main:discord:direct:user123", label: "Tyler" }),
       ),
     ).toBe("Tyler");
   });

@@ -68,6 +68,8 @@ import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
 
+const SUPPORTED_CRON_CHANNELS = new Set(["telegram", "discord"]);
+
 const AVATAR_DATA_RE = /^data:/i;
 const AVATAR_HTTP_RE = /^https?:\/\//i;
 
@@ -238,33 +240,16 @@ export function renderApp(state: AppViewState) {
                 snapshot: state.channelsSnapshot,
                 lastError: state.channelsError,
                 lastSuccessAt: state.channelsLastSuccess,
-                whatsappMessage: state.whatsappLoginMessage,
-                whatsappQrDataUrl: state.whatsappLoginQrDataUrl,
-                whatsappConnected: state.whatsappLoginConnected,
-                whatsappBusy: state.whatsappBusy,
                 configSchema: state.configSchema,
                 configSchemaLoading: state.configSchemaLoading,
                 configForm: state.configForm,
                 configUiHints: state.configUiHints,
                 configSaving: state.configSaving,
                 configFormDirty: state.configFormDirty,
-                nostrProfileFormState: state.nostrProfileFormState,
-                nostrProfileAccountId: state.nostrProfileAccountId,
                 onRefresh: (probe) => loadChannels(state, probe),
-                onWhatsAppStart: (force) => state.handleWhatsAppStart(force),
-                onWhatsAppWait: () => state.handleWhatsAppWait(),
-                onWhatsAppLogout: () => state.handleWhatsAppLogout(),
                 onConfigPatch: (path, value) => updateConfigFormValue(state, path, value),
                 onConfigSave: () => state.handleChannelConfigSave(),
                 onConfigReload: () => state.handleChannelConfigReload(),
-                onNostrProfileEdit: (accountId, profile) =>
-                  state.handleNostrProfileEdit(accountId, profile),
-                onNostrProfileCancel: () => state.handleNostrProfileCancel(),
-                onNostrProfileFieldChange: (field, value) =>
-                  state.handleNostrProfileFieldChange(field, value),
-                onNostrProfileSave: () => state.handleNostrProfileSave(),
-                onNostrProfileImport: () => state.handleNostrProfileImport(),
-                onNostrProfileToggleAdvanced: () => state.handleNostrProfileToggleAdvanced(),
               })
             : nothing
         }
@@ -318,8 +303,12 @@ export function renderApp(state: AppViewState) {
                 busy: state.cronBusy,
                 form: state.cronForm,
                 channels: state.channelsSnapshot?.channelMeta?.length
-                  ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
-                  : (state.channelsSnapshot?.channelOrder ?? []),
+                  ? state.channelsSnapshot.channelMeta
+                      .map((entry) => entry.id)
+                      .filter((id) => SUPPORTED_CRON_CHANNELS.has(id))
+                  : (state.channelsSnapshot?.channelOrder ?? []).filter((id) =>
+                      SUPPORTED_CRON_CHANNELS.has(id),
+                    ),
                 channelLabels: state.channelsSnapshot?.channelLabels ?? {},
                 channelMeta: state.channelsSnapshot?.channelMeta ?? [],
                 runsJobId: state.cronRunsJobId,

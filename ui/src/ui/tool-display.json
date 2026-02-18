@@ -172,14 +172,6 @@
         }
       }
     },
-    "whatsapp_login": {
-      "icon": "circle",
-      "title": "WhatsApp Login",
-      "actions": {
-        "start": { "label": "start" },
-        "wait": { "label": "wait" }
-      }
-    },
     "discord": {
       "icon": "messageSquare",
       "title": "Discord",
@@ -213,23 +205,6 @@
         "timeout": { "label": "timeout", "detailKeys": ["guildId", "userId"] },
         "kick": { "label": "kick", "detailKeys": ["guildId", "userId"] },
         "ban": { "label": "ban", "detailKeys": ["guildId", "userId"] }
-      }
-    },
-    "slack": {
-      "icon": "messageSquare",
-      "title": "Slack",
-      "actions": {
-        "react": { "label": "react", "detailKeys": ["channelId", "messageId", "emoji"] },
-        "reactions": { "label": "reactions", "detailKeys": ["channelId", "messageId"] },
-        "sendMessage": { "label": "send", "detailKeys": ["to", "content"] },
-        "editMessage": { "label": "edit", "detailKeys": ["channelId", "messageId"] },
-        "deleteMessage": { "label": "delete", "detailKeys": ["channelId", "messageId"] },
-        "readMessages": { "label": "read messages", "detailKeys": ["channelId", "limit"] },
-        "pinMessage": { "label": "pin", "detailKeys": ["channelId", "messageId"] },
-        "unpinMessage": { "label": "unpin", "detailKeys": ["channelId", "messageId"] },
-        "listPins": { "label": "list pins", "detailKeys": ["channelId"] },
-        "memberInfo": { "label": "member", "detailKeys": ["userId"] },
-        "emojiList": { "label": "emoji list" }
       }
     }
   }

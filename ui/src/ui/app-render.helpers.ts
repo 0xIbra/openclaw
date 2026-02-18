@@ -258,18 +258,9 @@ function resolveMainSessionKey(
 
 /* ── Channel display labels ────────────────────────────── */
 const CHANNEL_LABELS: Record<string, string> = {
-  bluebubbles: "iMessage",
   telegram: "Telegram",
   discord: "Discord",
-  signal: "Signal",
-  slack: "Slack",
-  whatsapp: "WhatsApp",
-  matrix: "Matrix",
-  email: "Email",
-  sms: "SMS",
 };
-
-const KNOWN_CHANNEL_KEYS = Object.keys(CHANNEL_LABELS);
 
 /** Parsed type / context extracted from a session key. */
 export type SessionKeyInfo = {
@@ -318,13 +309,6 @@ export function parseSessionKey(key: string): SessionKeyInfo {
     const channel = groupMatch[1];
     const channelLabel = CHANNEL_LABELS[channel] ?? capitalize(channel);
     return { prefix: "", fallbackName: `${channelLabel} Group` };
-  }
-
-  // ── Channel-prefixed legacy keys (e.g. "bluebubbles:g-…") ──
-  for (const ch of KNOWN_CHANNEL_KEYS) {
-    if (key === ch || key.startsWith(`${ch}:`)) {
-      return { prefix: "", fallbackName: `${CHANNEL_LABELS[ch]} Session` };
-    }
   }
 
   // ── Unknown — return key as-is ───────────────────

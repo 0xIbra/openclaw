@@ -132,10 +132,15 @@ describe("config form renderer", () => {
     const schema = {
       type: "object",
       properties: {
-        slack: {
+        channels: {
           type: "object",
-          additionalProperties: {
-            type: "string",
+          properties: {
+            telegram: {
+              type: "object",
+              additionalProperties: {
+                type: "string",
+              },
+            },
           },
         },
       },
@@ -146,7 +151,7 @@ describe("config form renderer", () => {
         schema: analysis.schema,
         uiHints: {},
         unsupportedPaths: analysis.unsupportedPaths,
-        value: { slack: { channelA: "ok" } },
+        value: { channels: { telegram: { channelA: "ok" } } },
         onPatch,
       }),
       container,
@@ -155,7 +160,7 @@ describe("config form renderer", () => {
     const removeButton = container.querySelector(".cfg-map__item-remove");
     expect(removeButton).not.toBeUndefined();
     removeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(onPatch).toHaveBeenCalledWith(["slack"], {});
+    expect(onPatch).toHaveBeenCalledWith(["channels", "telegram"], {});
   });
 
   it("supports wildcard uiHints for map entries", () => {
@@ -228,7 +233,7 @@ describe("config form renderer", () => {
         channels: {
           type: "object",
           properties: {
-            whatsapp: {
+            telegram: {
               type: "object",
               properties: {
                 enabled: { type: "boolean" },

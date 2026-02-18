@@ -202,10 +202,6 @@ import {
   UpdateRunParamsSchema,
   type WakeParams,
   WakeParamsSchema,
-  type WebLoginStartParams,
-  WebLoginStartParamsSchema,
-  type WebLoginWaitParams,
-  WebLoginWaitParamsSchema,
   type WizardCancelParams,
   WizardCancelParamsSchema,
   type WizardNextParams,
@@ -364,9 +360,6 @@ export const validateChatAbortParams = ajv.compile<ChatAbortParams>(ChatAbortPar
 export const validateChatInjectParams = ajv.compile<ChatInjectParams>(ChatInjectParamsSchema);
 export const validateChatEvent = ajv.compile(ChatEventSchema);
 export const validateUpdateRunParams = ajv.compile<UpdateRunParams>(UpdateRunParamsSchema);
-export const validateWebLoginStartParams =
-  ajv.compile<WebLoginStartParams>(WebLoginStartParamsSchema);
-export const validateWebLoginWaitParams = ajv.compile<WebLoginWaitParams>(WebLoginWaitParamsSchema);
 
 export function formatValidationErrors(errors: ErrorObject[] | null | undefined) {
   if (!errors?.length) {
@@ -456,8 +449,6 @@ export {
   ChannelsStatusParamsSchema,
   ChannelsStatusResultSchema,
   ChannelsLogoutParamsSchema,
-  WebLoginStartParamsSchema,
-  WebLoginWaitParamsSchema,
   AgentSummarySchema,
   AgentsFileEntrySchema,
   AgentsCreateParamsSchema,
@@ -545,8 +536,6 @@ export type {
   ChannelsStatusParams,
   ChannelsStatusResult,
   ChannelsLogoutParams,
-  WebLoginStartParams,
-  WebLoginWaitParams,
   AgentSummary,
   AgentsFileEntry,
   AgentsCreateParams,

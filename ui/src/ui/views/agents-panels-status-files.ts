@@ -57,6 +57,8 @@ type ChannelSummaryEntry = {
   accounts: ChannelAccountSnapshot[];
 };
 
+const SUPPORTED_CHANNEL_IDS = new Set(["telegram", "discord"]);
+
 function resolveChannelLabel(snapshot: ChannelsStatusSnapshot, id: string) {
   const meta = snapshot.channelMeta?.find((entry) => entry.id === id);
   if (meta?.label) {
@@ -91,11 +93,13 @@ function resolveChannelEntries(snapshot: ChannelsStatusSnapshot | null): Channel
   for (const id of ids) {
     ordered.push(id);
   }
-  return ordered.map((id) => ({
-    id,
-    label: resolveChannelLabel(snapshot, id),
-    accounts: snapshot.channelAccounts?.[id] ?? [],
-  }));
+  return ordered
+    .filter((id) => SUPPORTED_CHANNEL_IDS.has(id))
+    .map((id) => ({
+      id,
+      label: resolveChannelLabel(snapshot, id),
+      accounts: snapshot.channelAccounts?.[id] ?? [],
+    }));
 }
 
 const CHANNEL_EXTRA_FIELDS = ["groupPolicy", "streamMode", "dmPolicy"] as const;

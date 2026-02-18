@@ -143,7 +143,7 @@ describe("applyConfig", () => {
     const state = createState();
     state.connected = true;
     state.client = { request } as unknown as ConfigState["client"];
-    state.applySessionKey = "agent:main:whatsapp:dm:+15555550123";
+    state.applySessionKey = "agent:main:telegram:direct:user123";
     state.configFormMode = "raw";
     state.configRaw = '{\n  agent: { workspace: "~/openclaw" }\n}\n';
     state.configSnapshot = {
@@ -155,7 +155,7 @@ describe("applyConfig", () => {
     expect(request).toHaveBeenCalledWith("config.apply", {
       raw: '{\n  agent: { workspace: "~/openclaw" }\n}\n',
       baseHash: "hash-123",
-      sessionKey: "agent:main:whatsapp:dm:+15555550123",
+      sessionKey: "agent:main:telegram:direct:user123",
     });
   });
 
@@ -169,7 +169,7 @@ describe("applyConfig", () => {
     const state = createState();
     state.connected = true;
     state.client = { request } as unknown as ConfigState["client"];
-    state.applySessionKey = "agent:main:web:dm:test";
+    state.applySessionKey = "agent:main:discord:direct:user123";
     state.configFormMode = "form";
     state.configForm = {
       gateway: { port: "18789", debug: "true" },
@@ -203,7 +203,7 @@ describe("applyConfig", () => {
     expect(parsed.gateway.port).toBe(18789);
     expect(parsed.gateway.debug).toBe(true);
     expect(params.baseHash).toBe("hash-apply-1");
-    expect(params.sessionKey).toBe("agent:main:web:dm:test");
+    expect(params.sessionKey).toBe("agent:main:discord:direct:user123");
   });
 });
 
@@ -284,12 +284,12 @@ describe("runUpdate", () => {
     const state = createState();
     state.connected = true;
     state.client = { request } as unknown as ConfigState["client"];
-    state.applySessionKey = "agent:main:whatsapp:dm:+15555550123";
+    state.applySessionKey = "agent:main:discord:direct:user123";
 
     await runUpdate(state);
 
     expect(request).toHaveBeenCalledWith("update.run", {
-      sessionKey: "agent:main:whatsapp:dm:+15555550123",
+      sessionKey: "agent:main:discord:direct:user123",
     });
   });
 });

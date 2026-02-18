@@ -22,7 +22,6 @@ import { talkHandlers } from "./server-methods/talk.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
 import { voicewakeHandlers } from "./server-methods/voicewake.js";
-import { webHandlers } from "./server-methods/web.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
 
 const ADMIN_SCOPE = "operator.admin";
@@ -166,7 +165,6 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...cronHandlers,
   ...deviceHandlers,
   ...execApprovalsHandlers,
-  ...webHandlers,
   ...modelsHandlers,
   ...configHandlers,
   ...wizardHandlers,

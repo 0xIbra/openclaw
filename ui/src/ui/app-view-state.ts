@@ -22,7 +22,6 @@ import type {
   HealthSnapshot,
   LogEntry,
   LogLevel,
-  NostrProfile,
   PresenceEntry,
   SessionsUsageResult,
   CostUsageSummary,
@@ -32,7 +31,6 @@ import type {
   StatusSummary,
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
-import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
@@ -112,12 +110,6 @@ export type AppViewState = {
   channelsSnapshot: ChannelsStatusSnapshot | null;
   channelsError: string | null;
   channelsLastSuccess: number | null;
-  whatsappLoginMessage: string | null;
-  whatsappLoginQrDataUrl: string | null;
-  whatsappLoginConnected: boolean | null;
-  whatsappBusy: boolean;
-  nostrProfileFormState: NostrProfileFormState | null;
-  nostrProfileAccountId: string | null;
   configFormDirty: boolean;
   presenceLoading: boolean;
   presenceEntries: PresenceEntry[];
@@ -228,17 +220,8 @@ export type AppViewState = {
   loadOverview: () => Promise<void>;
   loadAssistantIdentity: () => Promise<void>;
   loadCron: () => Promise<void>;
-  handleWhatsAppStart: (force: boolean) => Promise<void>;
-  handleWhatsAppWait: () => Promise<void>;
-  handleWhatsAppLogout: () => Promise<void>;
   handleChannelConfigSave: () => Promise<void>;
   handleChannelConfigReload: () => Promise<void>;
-  handleNostrProfileEdit: (accountId: string, profile: NostrProfile | null) => void;
-  handleNostrProfileCancel: () => void;
-  handleNostrProfileFieldChange: (field: keyof NostrProfile, value: string) => void;
-  handleNostrProfileSave: () => Promise<void>;
-  handleNostrProfileImport: () => Promise<void>;
-  handleNostrProfileToggleAdvanced: () => void;
   handleExecApprovalDecision: (decision: "allow-once" | "allow-always" | "deny") => Promise<void>;
   handleGatewayUrlConfirm: () => void;
   handleGatewayUrlCancel: () => void;
