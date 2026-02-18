@@ -14,10 +14,12 @@ import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
+import { projectsHandlers } from "./server-methods/projects.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { systemHandlers } from "./server-methods/system.js";
+import { tasksHandlers } from "./server-methods/tasks.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
@@ -66,6 +68,10 @@ const READ_METHODS = new Set([
   "node.describe",
   "chat.history",
   "config.get",
+  "projects.list",
+  "projects.get",
+  "tasks.list",
+  "tasks.get",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -141,6 +147,12 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
     method === "cron.update" ||
     method === "cron.remove" ||
     method === "cron.run" ||
+    method === "projects.create" ||
+    method === "projects.update" ||
+    method === "projects.archive" ||
+    method === "tasks.create" ||
+    method === "tasks.update" ||
+    method === "tasks.transition" ||
     method === "sessions.patch" ||
     method === "sessions.reset" ||
     method === "sessions.delete" ||
@@ -164,6 +176,8 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...modelsHandlers,
   ...configHandlers,
   ...wizardHandlers,
+  ...projectsHandlers,
+  ...tasksHandlers,
 
   ...skillsHandlers,
   ...sessionsHandlers,

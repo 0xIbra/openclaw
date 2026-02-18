@@ -148,6 +148,22 @@ import {
   NodePairVerifyParamsSchema,
   type NodeRenameParams,
   NodeRenameParamsSchema,
+  type Project,
+  ProjectSchema,
+  type ProjectsArchiveParams,
+  ProjectsArchiveParamsSchema,
+  type ProjectsChangedEvent,
+  ProjectsChangedEventSchema,
+  type ProjectsCreateParams,
+  ProjectsCreateParamsSchema,
+  type ProjectsGetParams,
+  ProjectsGetParamsSchema,
+  type ProjectsListParams,
+  ProjectsListParamsSchema,
+  type ProjectsListResult,
+  ProjectsListResultSchema,
+  type ProjectsUpdateParams,
+  ProjectsUpdateParamsSchema,
   type PollParams,
   PollParamsSchema,
   PROTOCOL_VERSION,
@@ -192,6 +208,22 @@ import {
   StateVersionSchema,
   type TickEvent,
   TickEventSchema,
+  type Task,
+  TaskSchema,
+  type TasksChangedEvent,
+  TasksChangedEventSchema,
+  type TasksCreateParams,
+  TasksCreateParamsSchema,
+  type TasksGetParams,
+  TasksGetParamsSchema,
+  type TasksListParams,
+  TasksListParamsSchema,
+  type TasksListResult,
+  TasksListResultSchema,
+  type TasksTransitionParams,
+  TasksTransitionParamsSchema,
+  type TasksUpdateParams,
+  TasksUpdateParamsSchema,
   type UpdateRunParams,
   UpdateRunParamsSchema,
   type WakeParams,
@@ -265,6 +297,17 @@ export const validateNodeInvokeResultParams = ajv.compile<NodeInvokeResultParams
   NodeInvokeResultParamsSchema,
 );
 export const validateNodeEventParams = ajv.compile<NodeEventParams>(NodeEventParamsSchema);
+export const validateProjectsListParams = ajv.compile<ProjectsListParams>(ProjectsListParamsSchema);
+export const validateProjectsCreateParams = ajv.compile<ProjectsCreateParams>(
+  ProjectsCreateParamsSchema,
+);
+export const validateProjectsGetParams = ajv.compile<ProjectsGetParams>(ProjectsGetParamsSchema);
+export const validateProjectsUpdateParams = ajv.compile<ProjectsUpdateParams>(
+  ProjectsUpdateParamsSchema,
+);
+export const validateProjectsArchiveParams = ajv.compile<ProjectsArchiveParams>(
+  ProjectsArchiveParamsSchema,
+);
 export const validateSessionsListParams = ajv.compile<SessionsListParams>(SessionsListParamsSchema);
 export const validateSessionsPreviewParams = ajv.compile<SessionsPreviewParams>(
   SessionsPreviewParamsSchema,
@@ -352,6 +395,13 @@ export const validateChatSendParams = ajv.compile(ChatSendParamsSchema);
 export const validateChatAbortParams = ajv.compile<ChatAbortParams>(ChatAbortParamsSchema);
 export const validateChatInjectParams = ajv.compile<ChatInjectParams>(ChatInjectParamsSchema);
 export const validateChatEvent = ajv.compile(ChatEventSchema);
+export const validateTasksListParams = ajv.compile<TasksListParams>(TasksListParamsSchema);
+export const validateTasksCreateParams = ajv.compile<TasksCreateParams>(TasksCreateParamsSchema);
+export const validateTasksGetParams = ajv.compile<TasksGetParams>(TasksGetParamsSchema);
+export const validateTasksUpdateParams = ajv.compile<TasksUpdateParams>(TasksUpdateParamsSchema);
+export const validateTasksTransitionParams = ajv.compile<TasksTransitionParams>(
+  TasksTransitionParamsSchema,
+);
 export const validateUpdateRunParams = ajv.compile<UpdateRunParams>(UpdateRunParamsSchema);
 
 export function formatValidationErrors(errors: ErrorObject[] | null | undefined) {
@@ -416,6 +466,14 @@ export {
   NodePairVerifyParamsSchema,
   NodeListParamsSchema,
   NodeInvokeParamsSchema,
+  ProjectSchema,
+  ProjectsListParamsSchema,
+  ProjectsListResultSchema,
+  ProjectsCreateParamsSchema,
+  ProjectsGetParamsSchema,
+  ProjectsUpdateParamsSchema,
+  ProjectsArchiveParamsSchema,
+  ProjectsChangedEventSchema,
   SessionsListParamsSchema,
   SessionsPreviewParamsSchema,
   SessionsPatchParamsSchema,
@@ -473,6 +531,14 @@ export {
   ChatHistoryParamsSchema,
   ChatSendParamsSchema,
   ChatInjectParamsSchema,
+  TaskSchema,
+  TasksListParamsSchema,
+  TasksListResultSchema,
+  TasksCreateParamsSchema,
+  TasksGetParamsSchema,
+  TasksUpdateParamsSchema,
+  TasksTransitionParamsSchema,
+  TasksChangedEventSchema,
   UpdateRunParamsSchema,
   TickEventSchema,
   ShutdownEventSchema,
@@ -551,6 +617,14 @@ export type {
   NodeInvokeParams,
   NodeInvokeResultParams,
   NodeEventParams,
+  Project,
+  ProjectsListParams,
+  ProjectsListResult,
+  ProjectsCreateParams,
+  ProjectsGetParams,
+  ProjectsUpdateParams,
+  ProjectsArchiveParams,
+  ProjectsChangedEvent,
   SessionsListParams,
   SessionsPreviewParams,
   SessionsResolveParams,
@@ -569,6 +643,14 @@ export type {
   CronRunParams,
   CronRunsParams,
   CronRunLogEntry,
+  Task,
+  TasksListParams,
+  TasksListResult,
+  TasksCreateParams,
+  TasksGetParams,
+  TasksUpdateParams,
+  TasksTransitionParams,
+  TasksChangedEvent,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,
   ExecApprovalsSnapshot,

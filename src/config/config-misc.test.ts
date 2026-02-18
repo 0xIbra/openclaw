@@ -73,7 +73,7 @@ describe("web search provider config", () => {
 });
 
 describe("talk.voiceAliases", () => {
-  it("accepts a string map of voice aliases", () => {
+  it("rejects legacy voice alias config after TTS strip-down", () => {
     const res = validateConfigObject({
       talk: {
         voiceAliases: {
@@ -82,7 +82,7 @@ describe("talk.voiceAliases", () => {
         },
       },
     });
-    expect(res.ok).toBe(true);
+    expect(res.ok).toBe(false);
   });
 
   it("rejects non-string voice alias values", () => {

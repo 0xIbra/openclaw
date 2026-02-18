@@ -106,6 +106,16 @@ import type {
   NodeRenameParamsSchema,
 } from "./nodes.js";
 import type {
+  ProjectSchema,
+  ProjectsArchiveParamsSchema,
+  ProjectsChangedEventSchema,
+  ProjectsCreateParamsSchema,
+  ProjectsGetParamsSchema,
+  ProjectsListParamsSchema,
+  ProjectsListResultSchema,
+  ProjectsUpdateParamsSchema,
+} from "./projects.js";
+import type {
   SessionsCompactParamsSchema,
   SessionsDeleteParamsSchema,
   SessionsListParamsSchema,
@@ -116,6 +126,16 @@ import type {
   SessionsUsageParamsSchema,
 } from "./sessions.js";
 import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
+import type {
+  TaskSchema,
+  TasksChangedEventSchema,
+  TasksCreateParamsSchema,
+  TasksGetParamsSchema,
+  TasksListParamsSchema,
+  TasksListResultSchema,
+  TasksTransitionParamsSchema,
+  TasksUpdateParamsSchema,
+} from "./tasks.js";
 import type {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -154,6 +174,14 @@ export type NodeDescribeParams = Static<typeof NodeDescribeParamsSchema>;
 export type NodeInvokeParams = Static<typeof NodeInvokeParamsSchema>;
 export type NodeInvokeResultParams = Static<typeof NodeInvokeResultParamsSchema>;
 export type NodeEventParams = Static<typeof NodeEventParamsSchema>;
+export type Project = Static<typeof ProjectSchema>;
+export type ProjectsListParams = Static<typeof ProjectsListParamsSchema>;
+export type ProjectsListResult = Static<typeof ProjectsListResultSchema>;
+export type ProjectsCreateParams = Static<typeof ProjectsCreateParamsSchema>;
+export type ProjectsGetParams = Static<typeof ProjectsGetParamsSchema>;
+export type ProjectsUpdateParams = Static<typeof ProjectsUpdateParamsSchema>;
+export type ProjectsArchiveParams = Static<typeof ProjectsArchiveParamsSchema>;
+export type ProjectsChangedEvent = Static<typeof ProjectsChangedEventSchema>;
 export type SessionsListParams = Static<typeof SessionsListParamsSchema>;
 export type SessionsPreviewParams = Static<typeof SessionsPreviewParamsSchema>;
 export type SessionsResolveParams = Static<typeof SessionsResolveParamsSchema>;
@@ -226,6 +254,14 @@ export type DevicePairApproveParams = Static<typeof DevicePairApproveParamsSchem
 export type DevicePairRejectParams = Static<typeof DevicePairRejectParamsSchema>;
 export type DeviceTokenRotateParams = Static<typeof DeviceTokenRotateParamsSchema>;
 export type DeviceTokenRevokeParams = Static<typeof DeviceTokenRevokeParamsSchema>;
+export type Task = Static<typeof TaskSchema>;
+export type TasksListParams = Static<typeof TasksListParamsSchema>;
+export type TasksListResult = Static<typeof TasksListResultSchema>;
+export type TasksCreateParams = Static<typeof TasksCreateParamsSchema>;
+export type TasksGetParams = Static<typeof TasksGetParamsSchema>;
+export type TasksUpdateParams = Static<typeof TasksUpdateParamsSchema>;
+export type TasksTransitionParams = Static<typeof TasksTransitionParamsSchema>;
+export type TasksChangedEvent = Static<typeof TasksChangedEventSchema>;
 export type ChatAbortParams = Static<typeof ChatAbortParamsSchema>;
 export type ChatInjectParams = Static<typeof ChatInjectParamsSchema>;
 export type ChatEvent = Static<typeof ChatEventSchema>;

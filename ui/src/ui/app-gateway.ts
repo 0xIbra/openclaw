@@ -25,7 +25,9 @@ import {
   removeExecApproval,
 } from "./controllers/exec-approval.ts";
 import { loadNodes } from "./controllers/nodes.ts";
+import { patchProjectFromEvent } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
+import { patchTaskFromEvent } from "./controllers/tasks.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 
 type GatewayHost = {
@@ -54,6 +56,9 @@ type GatewayHost = {
   refreshSessionsAfterChat: Set<string>;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
+  boardProjects: import("./types.ts").ProjectDto[];
+  boardTasks: import("./types.ts").TaskDto[];
+  boardSelectedProjectId: string | null;
 };
 
 type SessionDefaultsSnapshot = {
@@ -249,6 +254,16 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "device.pair.requested" || evt.event === "device.pair.resolved") {
     void loadDevices(host as unknown as OpenClawApp, { quiet: true });
+  }
+
+  if (evt.event === "projects.changed") {
+    patchProjectFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.changed") {
+    patchTaskFromEvent(host, evt.payload);
+    return;
   }
 
   if (evt.event === "exec.approval.requested") {

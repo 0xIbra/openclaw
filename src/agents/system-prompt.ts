@@ -147,6 +147,22 @@ function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
   return ["## Voice (TTS)", hint, ""];
 }
 
+function buildTaskPlanningSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
+  if (params.isMinimal) {
+    return [];
+  }
+  if (!params.availableTools.has("projects") || !params.availableTools.has("tasks")) {
+    return [];
+  }
+  return [
+    "## Task Planning",
+    "- For planning/work-tracking requests, use `projects` and `tasks` tools.",
+    "- Prefer tool-backed answers over freehand status guesses.",
+    "- Confirm changes with IDs and resulting status in one short line.",
+    "",
+  ];
+}
+
 function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
   const docsPath = params.docsPath?.trim();
   if (!docsPath || params.isMinimal) {
@@ -238,6 +254,8 @@ export function buildAgentSystemPrompt(params: {
     canvas: "Present/eval/snapshot the Canvas",
     nodes: "List/describe/notify/camera/screen on paired nodes",
     cron: "Manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
+    projects: "Manage tracked projects (list/create/get/update/archive)",
+    tasks: "Manage project tasks (list/create/get/update/transition)",
     message: "Send messages and channel actions",
     gateway: "Restart, apply config, or run updates on the running OpenClaw process",
     agents_list: "List agent ids allowed for sessions_spawn",
@@ -267,6 +285,8 @@ export function buildAgentSystemPrompt(params: {
     "canvas",
     "nodes",
     "cron",
+    "projects",
+    "tasks",
     "message",
     "gateway",
     "agents_list",
@@ -539,6 +559,7 @@ export function buildAgentSystemPrompt(params: {
       runtimeChannel,
       messageToolHints: params.messageToolHints,
     }),
+    ...buildTaskPlanningSection({ isMinimal, availableTools }),
     ...buildVoiceSection({ isMinimal, ttsHint: params.ttsHint }),
   ];
 

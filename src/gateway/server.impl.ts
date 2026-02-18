@@ -46,6 +46,7 @@ import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { createTaskService } from "../tasks/service.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
@@ -397,6 +398,7 @@ export async function startGatewayServer(
     broadcast,
   });
   let { cron, storePath: cronStorePath } = cronState;
+  const taskService = createTaskService();
 
   const channelManager = createChannelManager({
     loadConfig,
@@ -547,6 +549,7 @@ export async function startGatewayServer(
     context: {
       deps,
       cron,
+      taskService,
       cronStorePath,
       execApprovalManager,
       loadGatewayModelCatalog,
@@ -716,6 +719,7 @@ export async function startGatewayServer(
       }
       skillsChangeUnsub();
       authRateLimiter?.dispose();
+      taskService.close();
       await close(opts);
     },
   };

@@ -347,6 +347,60 @@ export type CronRunLogEntry = {
   sessionKey?: string;
 };
 
+export type ProjectDto = {
+  id: string;
+  name: string;
+  description?: string;
+  repoRoot?: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  archivedAtMs: number | null;
+};
+
+export type TaskType =
+  | "feature"
+  | "bugfix"
+  | "refactor"
+  | "test"
+  | "review"
+  | "research"
+  | "devops";
+export type TaskPriority = "critical" | "high" | "medium" | "low";
+export type TaskComplexity = "trivial" | "small" | "medium" | "large" | "epic";
+export type TaskStatus =
+  | "created"
+  | "backlog"
+  | "assigned"
+  | "running"
+  | "review"
+  | "blocked"
+  | "failed"
+  | "done";
+
+export type TaskDto = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  type: TaskType;
+  priority: TaskPriority;
+  complexity: TaskComplexity | null;
+  status: TaskStatus;
+  parentTaskId: string | null;
+  dependsOnTaskIds: string[];
+  blockedByTaskIds: string[];
+  assignedAgentId: string | null;
+  maxAttempts: number;
+  attemptCount: number;
+  relevantPaths: string[];
+  tags: string[];
+  createdBy: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  startedAtMs: number | null;
+  completedAtMs: number | null;
+};
+
 export type SkillsStatusConfigCheck = {
   path: string;
   satisfied: boolean;

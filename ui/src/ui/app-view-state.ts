@@ -25,10 +25,14 @@ import type {
   PresenceEntry,
   SessionsUsageResult,
   CostUsageSummary,
+  ProjectDto,
   SessionUsageTimeSeries,
   SessionsListResult,
   SkillStatusReport,
   StatusSummary,
+  TaskDto,
+  TaskPriority,
+  TaskType,
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
@@ -182,6 +186,18 @@ export type AppViewState = {
   cronRunsJobId: string | null;
   cronRuns: CronRunLogEntry[];
   cronBusy: boolean;
+  boardLoading: boolean;
+  boardBusy: boolean;
+  boardError: string | null;
+  boardProjects: ProjectDto[];
+  boardTasks: TaskDto[];
+  boardSelectedProjectId: string | null;
+  boardShowArchivedProjects: boolean;
+  boardFilterAssignee: string;
+  boardFilterType: "" | TaskType;
+  boardFilterPriority: "" | TaskPriority;
+  boardFilterTag: string;
+  boardFilterQuery: string;
   skillsLoading: boolean;
   skillsReport: SkillStatusReport | null;
   skillsError: string | null;

@@ -43,6 +43,7 @@ import {
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
+import { createProject, loadProjects } from "./controllers/projects.ts";
 import { deleteSession, loadSessions, patchSession } from "./controllers/sessions.ts";
 import {
   installSkill,
@@ -51,9 +52,16 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import {
+  createTask,
+  loadTasks,
+  transitionTaskOptimistic,
+  updateTask,
+} from "./controllers/tasks.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
 import { renderAgents } from "./views/agents.ts";
+import { renderBoard } from "./views/board.ts";
 import { renderChannels } from "./views/channels.ts";
 import { renderChat } from "./views/chat.ts";
 import { renderConfig } from "./views/config.ts";
@@ -291,6 +299,149 @@ export function renderApp(state: AppViewState) {
         }
 
         ${renderUsageTab(state)}
+
+        ${
+          state.tab === "board"
+            ? renderBoard({
+                loading: state.boardLoading,
+                busy: state.boardBusy,
+                error: state.boardError,
+                projects: state.boardProjects,
+                tasks: state.boardTasks,
+                selectedProjectId: state.boardSelectedProjectId,
+                showArchivedProjects: state.boardShowArchivedProjects,
+                filters: {
+                  assignee: state.boardFilterAssignee,
+                  type: state.boardFilterType,
+                  priority: state.boardFilterPriority,
+                  tag: state.boardFilterTag,
+                  query: state.boardFilterQuery,
+                },
+                onSelectProject: (projectId) => {
+                  state.boardSelectedProjectId = projectId || null;
+                  void loadTasks(state);
+                },
+                onToggleArchivedProjects: (enabled) => {
+                  state.boardShowArchivedProjects = enabled;
+                  void loadProjects(state).then(() => loadTasks(state));
+                },
+                onFiltersChange: (patch) => {
+                  state.boardFilterAssignee = patch.assignee ?? state.boardFilterAssignee;
+                  state.boardFilterType = patch.type ?? state.boardFilterType;
+                  state.boardFilterPriority = patch.priority ?? state.boardFilterPriority;
+                  state.boardFilterTag = patch.tag ?? state.boardFilterTag;
+                  state.boardFilterQuery = patch.query ?? state.boardFilterQuery;
+                  void loadTasks(state);
+                },
+                onRefresh: () => {
+                  void loadProjects(state).then(() => loadTasks(state));
+                },
+                onCreateProject: async () => {
+                  const name = window.prompt("Project name");
+                  if (!name?.trim()) {
+                    return;
+                  }
+                  const description = window.prompt("Description (optional)") ?? undefined;
+                  const repoRoot = window.prompt("Repo root path (optional)") ?? undefined;
+                  try {
+                    await createProject(state, {
+                      name,
+                      description,
+                      repoRoot,
+                    });
+                    await loadTasks(state);
+                  } catch (err) {
+                    state.boardError = String(err);
+                  }
+                },
+                onCreateTask: async () => {
+                  if (!state.boardSelectedProjectId) {
+                    return;
+                  }
+                  const title = window.prompt("Task title");
+                  if (!title?.trim()) {
+                    return;
+                  }
+                  const description = window.prompt("Task description", "Describe the work.") ?? "";
+                  const typeRaw = (
+                    window.prompt(
+                      "Task type (feature|bugfix|refactor|test|review|research|devops)",
+                      "feature",
+                    ) ?? "feature"
+                  )
+                    .trim()
+                    .toLowerCase();
+                  const type =
+                    typeRaw === "bugfix" ||
+                    typeRaw === "refactor" ||
+                    typeRaw === "test" ||
+                    typeRaw === "review" ||
+                    typeRaw === "research" ||
+                    typeRaw === "devops"
+                      ? typeRaw
+                      : "feature";
+                  const priorityRaw = (
+                    window.prompt("Priority (critical|high|medium|low)", "medium") ?? "medium"
+                  )
+                    .trim()
+                    .toLowerCase();
+                  const priority =
+                    priorityRaw === "critical" || priorityRaw === "high" || priorityRaw === "low"
+                      ? priorityRaw
+                      : "medium";
+                  const assignedAgentId =
+                    window.prompt("Assigned agent id (optional)") ?? undefined;
+                  const tagsRaw = window.prompt("Tags (comma-separated, optional)") ?? "";
+                  const tags = tagsRaw
+                    .split(",")
+                    .map((entry) => entry.trim())
+                    .filter(Boolean);
+                  try {
+                    await createTask(state, {
+                      projectId: state.boardSelectedProjectId,
+                      title,
+                      description: description || "No description.",
+                      type,
+                      priority,
+                      assignedAgentId,
+                      tags,
+                    });
+                  } catch (err) {
+                    state.boardError = String(err);
+                  }
+                },
+                onMoveTask: (taskId, toStatus) => {
+                  void transitionTaskOptimistic(state, { id: taskId, toStatus });
+                },
+                onEditTask: (task) => {
+                  const title = window.prompt("Task title", task.title);
+                  if (title == null) {
+                    return;
+                  }
+                  const description = window.prompt("Task description", task.description);
+                  const assignedAgentId = window.prompt(
+                    "Assigned agent id (blank to clear)",
+                    task.assignedAgentId ?? "",
+                  );
+                  const tagsRaw = window.prompt("Tags (comma-separated)", task.tags.join(", "));
+                  const tags = (tagsRaw ?? "")
+                    .split(",")
+                    .map((entry) => entry.trim())
+                    .filter(Boolean);
+                  void updateTask(state, {
+                    id: task.id,
+                    title: title.trim(),
+                    description: (description ?? "").trim(),
+                    assignedAgentId:
+                      assignedAgentId == null ? task.assignedAgentId : assignedAgentId,
+                    tags,
+                  }).catch((err) => {
+                    state.boardError = String(err);
+                  });
+                },
+              })
+            : nothing
+        }
 
         ${
           state.tab === "cron"

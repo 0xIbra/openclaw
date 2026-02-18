@@ -22,10 +22,14 @@ import type {
   LogEntry,
   LogLevel,
   PresenceEntry,
+  ProjectDto,
   ChannelsStatusSnapshot,
   SessionsListResult,
   SkillStatusReport,
   StatusSummary,
+  TaskDto,
+  TaskPriority,
+  TaskType,
 } from "./types.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -272,6 +276,19 @@ export class OpenClawApp extends LitElement {
   @state() cronRunsJobId: string | null = null;
   @state() cronRuns: CronRunLogEntry[] = [];
   @state() cronBusy = false;
+
+  @state() boardLoading = false;
+  @state() boardBusy = false;
+  @state() boardError: string | null = null;
+  @state() boardProjects: ProjectDto[] = [];
+  @state() boardTasks: TaskDto[] = [];
+  @state() boardSelectedProjectId: string | null = null;
+  @state() boardShowArchivedProjects = false;
+  @state() boardFilterAssignee = "";
+  @state() boardFilterType: "" | TaskType = "";
+  @state() boardFilterPriority: "" | TaskPriority = "";
+  @state() boardFilterTag = "";
+  @state() boardFilterQuery = "";
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;

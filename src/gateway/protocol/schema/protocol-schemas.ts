@@ -113,6 +113,16 @@ import {
   NodeRenameParamsSchema,
 } from "./nodes.js";
 import {
+  ProjectSchema,
+  ProjectsArchiveParamsSchema,
+  ProjectsChangedEventSchema,
+  ProjectsCreateParamsSchema,
+  ProjectsGetParamsSchema,
+  ProjectsListParamsSchema,
+  ProjectsListResultSchema,
+  ProjectsUpdateParamsSchema,
+} from "./projects.js";
+import {
   SessionsCompactParamsSchema,
   SessionsDeleteParamsSchema,
   SessionsListParamsSchema,
@@ -123,6 +133,16 @@ import {
   SessionsUsageParamsSchema,
 } from "./sessions.js";
 import { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
+import {
+  TaskSchema,
+  TasksChangedEventSchema,
+  TasksCreateParamsSchema,
+  TasksGetParamsSchema,
+  TasksListParamsSchema,
+  TasksListResultSchema,
+  TasksTransitionParamsSchema,
+  TasksUpdateParamsSchema,
+} from "./tasks.js";
 import {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -165,6 +185,14 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   NodeInvokeResultParams: NodeInvokeResultParamsSchema,
   NodeEventParams: NodeEventParamsSchema,
   NodeInvokeRequestEvent: NodeInvokeRequestEventSchema,
+  Project: ProjectSchema,
+  ProjectsListParams: ProjectsListParamsSchema,
+  ProjectsListResult: ProjectsListResultSchema,
+  ProjectsCreateParams: ProjectsCreateParamsSchema,
+  ProjectsGetParams: ProjectsGetParamsSchema,
+  ProjectsUpdateParams: ProjectsUpdateParamsSchema,
+  ProjectsArchiveParams: ProjectsArchiveParamsSchema,
+  ProjectsChangedEvent: ProjectsChangedEventSchema,
   SessionsListParams: SessionsListParamsSchema,
   SessionsPreviewParams: SessionsPreviewParamsSchema,
   SessionsResolveParams: SessionsResolveParamsSchema,
@@ -239,6 +267,14 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   DeviceTokenRevokeParams: DeviceTokenRevokeParamsSchema,
   DevicePairRequestedEvent: DevicePairRequestedEventSchema,
   DevicePairResolvedEvent: DevicePairResolvedEventSchema,
+  Task: TaskSchema,
+  TasksListParams: TasksListParamsSchema,
+  TasksListResult: TasksListResultSchema,
+  TasksCreateParams: TasksCreateParamsSchema,
+  TasksGetParams: TasksGetParamsSchema,
+  TasksUpdateParams: TasksUpdateParamsSchema,
+  TasksTransitionParams: TasksTransitionParamsSchema,
+  TasksChangedEvent: TasksChangedEventSchema,
   ChatHistoryParams: ChatHistoryParamsSchema,
   ChatSendParams: ChatSendParamsSchema,
   ChatAbortParams: ChatAbortParamsSchema,
