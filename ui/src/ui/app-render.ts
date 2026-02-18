@@ -737,6 +737,45 @@ export function renderApp(state: AppViewState) {
                   if (!configValue) {
                     return;
                   }
+                  const defaultAgentId = state.agentsList?.defaultId ?? null;
+                  if (defaultAgentId && agentId === defaultAgentId) {
+                    const defaultsModel = (
+                      configValue as { agents?: { defaults?: { model?: unknown } } }
+                    ).agents?.defaults?.model;
+                    const existingFallbacks =
+                      defaultsModel &&
+                      typeof defaultsModel === "object" &&
+                      !Array.isArray(defaultsModel)
+                        ? (defaultsModel as { fallbacks?: unknown }).fallbacks
+                        : null;
+                    const normalizedFallbacks = Array.isArray(existingFallbacks)
+                      ? existingFallbacks.filter(
+                          (entry): entry is string =>
+                            typeof entry === "string" && entry.trim().length > 0,
+                        )
+                      : [];
+                    if (!modelId) {
+                      if (normalizedFallbacks.length > 0) {
+                        updateConfigFormValue(state, ["agents", "defaults", "model"], {
+                          fallbacks: normalizedFallbacks,
+                        });
+                      } else {
+                        removeConfigFormValue(state, ["agents", "defaults", "model"]);
+                      }
+                      return;
+                    }
+                    if (normalizedFallbacks.length > 0) {
+                      updateConfigFormValue(state, ["agents", "defaults", "model"], {
+                        primary: modelId,
+                        fallbacks: normalizedFallbacks,
+                      });
+                    } else {
+                      updateConfigFormValue(state, ["agents", "defaults", "model"], {
+                        primary: modelId,
+                      });
+                    }
+                    return;
+                  }
                   const list = (configValue as { agents?: { list?: unknown[] } }).agents?.list;
                   if (!Array.isArray(list)) {
                     return;
@@ -771,6 +810,45 @@ export function renderApp(state: AppViewState) {
                 },
                 onModelFallbacksChange: (agentId, fallbacks) => {
                   if (!configValue) {
+                    return;
+                  }
+                  const defaultAgentId = state.agentsList?.defaultId ?? null;
+                  if (defaultAgentId && agentId === defaultAgentId) {
+                    const basePath = ["agents", "defaults", "model"];
+                    const defaultsModel = (
+                      configValue as { agents?: { defaults?: { model?: unknown } } }
+                    ).agents?.defaults?.model;
+                    const normalized = fallbacks.map((name) => name.trim()).filter(Boolean);
+                    const resolvePrimary = () => {
+                      if (typeof defaultsModel === "string") {
+                        return defaultsModel.trim() || null;
+                      }
+                      if (
+                        defaultsModel &&
+                        typeof defaultsModel === "object" &&
+                        !Array.isArray(defaultsModel)
+                      ) {
+                        const primary = (defaultsModel as { primary?: unknown }).primary;
+                        if (typeof primary === "string") {
+                          const trimmed = primary.trim();
+                          return trimmed || null;
+                        }
+                      }
+                      return null;
+                    };
+                    const primary = resolvePrimary();
+                    if (normalized.length === 0) {
+                      if (primary) {
+                        updateConfigFormValue(state, basePath, { primary });
+                      } else {
+                        removeConfigFormValue(state, basePath);
+                      }
+                      return;
+                    }
+                    const next = primary
+                      ? { primary, fallbacks: normalized }
+                      : { fallbacks: normalized };
+                    updateConfigFormValue(state, basePath, next);
                     return;
                   }
                   const list = (configValue as { agents?: { list?: unknown[] } }).agents?.list;

@@ -383,9 +383,42 @@ function truncateValue(value: unknown, maxLen = 40): string {
   return str.slice(0, maxLen - 3) + "...";
 }
 
+function stripBedrockDiscoverySchema(rawSchema: unknown): unknown {
+  if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
+    return rawSchema;
+  }
+  const root = rawSchema as JsonSchema;
+  const rootProps = root.properties;
+  const modelsNode = rootProps?.models;
+  if (!rootProps || !modelsNode || schemaType(modelsNode) !== "object" || !modelsNode.properties) {
+    return rawSchema;
+  }
+  if (!("bedrockDiscovery" in modelsNode.properties)) {
+    return rawSchema;
+  }
+  const modelNodeRecord = modelsNode as JsonSchema & { required?: string[] };
+  const nextRequired = Array.isArray(modelNodeRecord.required)
+    ? modelNodeRecord.required.filter((key) => key !== "bedrockDiscovery")
+    : modelNodeRecord.required;
+  return {
+    ...root,
+    properties: {
+      ...rootProps,
+      models: {
+        ...modelNodeRecord,
+        properties: Object.fromEntries(
+          Object.entries(modelsNode.properties).filter(([key]) => key !== "bedrockDiscovery"),
+        ),
+        ...(nextRequired ? { required: nextRequired } : {}),
+      },
+    },
+  };
+}
+
 export function renderConfig(props: ConfigProps) {
   const validity = props.valid == null ? "unknown" : props.valid ? "valid" : "invalid";
-  const analysis = analyzeConfigSchema(props.schema);
+  const schemaForForm = stripBedrockDiscoverySchema(props.schema);
+  const analysis = analyzeConfigSchema(schemaForForm);
   const formUnsafe = analysis.schema ? analysis.unsupportedPaths.length > 0 : false;
 
   // Get available sections from schema

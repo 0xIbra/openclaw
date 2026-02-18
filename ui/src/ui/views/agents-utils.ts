@@ -118,6 +118,14 @@ type AgentConfigEntry = {
 };
 
 type ConfigSnapshot = {
+  models?: {
+    providers?: Record<
+      string,
+      {
+        models?: Array<{ id?: string; name?: string }>;
+      }
+    >;
+  };
   agents?: {
     defaults?: { workspace?: string; model?: unknown; models?: Record<string, { alias?: string }> };
     list?: AgentConfigEntry[];
@@ -343,26 +351,81 @@ function resolveConfiguredModels(
   configForm: Record<string, unknown> | null,
 ): ConfiguredModelOption[] {
   const cfg = configForm as ConfigSnapshot | null;
-  const models = cfg?.agents?.defaults?.models;
-  if (!models || typeof models !== "object") {
-    return [];
-  }
-  const options: ConfiguredModelOption[] = [];
-  for (const [modelId, modelRaw] of Object.entries(models)) {
-    const trimmed = modelId.trim();
-    if (!trimmed) {
-      continue;
+  const byValue = new Map<string, ConfiguredModelOption>();
+  const addOption = (valueRaw: string, labelRaw?: string) => {
+    const value = valueRaw.trim();
+    if (!value) {
+      return;
     }
-    const alias =
-      modelRaw && typeof modelRaw === "object" && "alias" in modelRaw
-        ? typeof (modelRaw as { alias?: unknown }).alias === "string"
-          ? (modelRaw as { alias?: string }).alias?.trim()
-          : undefined
-        : undefined;
-    const label = alias && alias !== trimmed ? `${alias} (${trimmed})` : trimmed;
-    options.push({ value: trimmed, label });
+    const label = labelRaw?.trim() || value;
+    const existing = byValue.get(value);
+    if (existing) {
+      if (existing.label === value && label !== value) {
+        byValue.set(value, { value, label });
+      }
+      return;
+    }
+    byValue.set(value, { value, label });
+  };
+
+  const providers = cfg?.models?.providers;
+  if (providers && typeof providers === "object") {
+    for (const [providerIdRaw, providerRaw] of Object.entries(providers)) {
+      const providerId = providerIdRaw.trim();
+      if (
+        !providerId ||
+        !providerRaw ||
+        typeof providerRaw !== "object" ||
+        Array.isArray(providerRaw)
+      ) {
+        continue;
+      }
+      const providerModels = (providerRaw as { models?: unknown }).models;
+      if (!Array.isArray(providerModels)) {
+        continue;
+      }
+      for (const modelRaw of providerModels) {
+        if (!modelRaw || typeof modelRaw !== "object" || Array.isArray(modelRaw)) {
+          continue;
+        }
+        const modelId =
+          typeof (modelRaw as { id?: unknown }).id === "string"
+            ? (modelRaw as { id: string }).id.trim()
+            : "";
+        if (!modelId) {
+          continue;
+        }
+        const value = `${providerId}/${modelId}`;
+        const modelName =
+          typeof (modelRaw as { name?: unknown }).name === "string"
+            ? (modelRaw as { name: string }).name.trim()
+            : "";
+        const label = modelName && modelName !== modelId ? `${modelName} (${value})` : value;
+        addOption(value, label);
+      }
+    }
   }
-  return options;
+
+  const catalog = cfg?.agents?.defaults?.models;
+  if (catalog && typeof catalog === "object") {
+    for (const [modelId, modelRaw] of Object.entries(catalog)) {
+      const trimmed = modelId.trim();
+      if (!trimmed) {
+        continue;
+      }
+      const alias =
+        modelRaw && typeof modelRaw === "object" && "alias" in modelRaw
+          ? typeof (modelRaw as { alias?: unknown }).alias === "string"
+            ? (modelRaw as { alias?: string }).alias?.trim()
+            : undefined
+          : undefined;
+      const label = alias && alias !== trimmed ? `${alias} (${trimmed})` : trimmed;
+      addOption(trimmed, label);
+    }
+  }
+  return Array.from(byValue.values()).toSorted(
+    (a, b) => a.label.localeCompare(b.label) || a.value.localeCompare(b.value),
+  );
 }
 
 export function buildModelOptions(
