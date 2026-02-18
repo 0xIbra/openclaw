@@ -32,6 +32,13 @@ const DEFAULT_MODEL_COST: ModelDefinitionConfig["cost"] = {
 };
 const DEFAULT_MODEL_INPUT: ModelDefinitionConfig["input"] = ["text"];
 const DEFAULT_MODEL_MAX_TOKENS = 8192;
+const DEFAULT_MAIN_AGENT_ID = "main";
+const DEFAULT_MAIN_AGENT_NAME = "Ares";
+const DEFAULT_MAIN_AGENT_ROLE = "master-control";
+const DEFAULT_MAIN_AGENT_VIBE =
+  "calm, tactical, direct; decomposes work clearly, delegates with intent, and protects quality";
+const DEFAULT_MAIN_AGENT_THEME = `${DEFAULT_MAIN_AGENT_ROLE} · ${DEFAULT_MAIN_AGENT_VIBE}`;
+const DEFAULT_MAIN_AGENT_EMOJI = "🛡️";
 
 type ModelDefinitionLike = Partial<ModelDefinitionConfig> &
   Pick<ModelDefinitionConfig, "id" | "name">;
@@ -280,10 +287,6 @@ export function applyAgentDefaults(cfg: OpenClawConfig): OpenClawConfig {
   const hasSubMax =
     typeof defaults?.subagents?.maxConcurrent === "number" &&
     Number.isFinite(defaults.subagents.maxConcurrent);
-  if (hasMax && hasSubMax) {
-    return cfg;
-  }
-
   let mutated = false;
   const nextDefaults = defaults ? { ...defaults } : {};
   if (!hasMax) {
@@ -295,6 +298,81 @@ export function applyAgentDefaults(cfg: OpenClawConfig): OpenClawConfig {
   if (!hasSubMax) {
     nextSubagents.maxConcurrent = DEFAULT_SUBAGENT_MAX_CONCURRENT;
     mutated = true;
+  }
+
+  const rawList = Array.isArray(agents?.list) ? agents.list : [];
+  const nextList = rawList.map((entry) => ({ ...entry }));
+
+  const findDefaultIndex = () => {
+    const explicitDefault = nextList.findIndex((entry) => entry?.default === true);
+    return explicitDefault >= 0 ? explicitDefault : 0;
+  };
+
+  const applyLeadIdentityDefaults = (entry: Record<string, unknown>) => {
+    let changed = false;
+    const nextEntry = { ...entry };
+    const name = typeof nextEntry.name === "string" ? nextEntry.name.trim() : "";
+    if (!name) {
+      nextEntry.name = DEFAULT_MAIN_AGENT_NAME;
+      changed = true;
+    }
+
+    const currentIdentity =
+      nextEntry.identity &&
+      typeof nextEntry.identity === "object" &&
+      !Array.isArray(nextEntry.identity)
+        ? (nextEntry.identity as Record<string, unknown>)
+        : {};
+    const nextIdentity = { ...currentIdentity };
+    const identityName = typeof nextIdentity.name === "string" ? nextIdentity.name.trim() : "";
+    if (!identityName) {
+      nextIdentity.name = DEFAULT_MAIN_AGENT_NAME;
+      changed = true;
+    }
+    const identityTheme = typeof nextIdentity.theme === "string" ? nextIdentity.theme.trim() : "";
+    if (!identityTheme) {
+      nextIdentity.theme = DEFAULT_MAIN_AGENT_THEME;
+      changed = true;
+    }
+    const identityEmoji = typeof nextIdentity.emoji === "string" ? nextIdentity.emoji.trim() : "";
+    if (!identityEmoji) {
+      nextIdentity.emoji = DEFAULT_MAIN_AGENT_EMOJI;
+      changed = true;
+    }
+    if (changed) {
+      nextEntry.identity = nextIdentity;
+    }
+    return { entry: nextEntry, changed };
+  };
+
+  if (nextList.length === 0) {
+    nextList.push({
+      id: DEFAULT_MAIN_AGENT_ID,
+      default: true,
+      name: DEFAULT_MAIN_AGENT_NAME,
+      identity: {
+        name: DEFAULT_MAIN_AGENT_NAME,
+        theme: DEFAULT_MAIN_AGENT_THEME,
+        emoji: DEFAULT_MAIN_AGENT_EMOJI,
+      },
+    });
+    mutated = true;
+  } else {
+    const mainIndex = nextList.findIndex((entry) => {
+      const id = typeof entry?.id === "string" ? entry.id.trim().toLowerCase() : "";
+      return id === DEFAULT_MAIN_AGENT_ID;
+    });
+    const targetIndex = mainIndex >= 0 ? mainIndex : findDefaultIndex();
+    if (targetIndex >= 0) {
+      const target = nextList[targetIndex];
+      if (target && typeof target === "object") {
+        const result = applyLeadIdentityDefaults(target as Record<string, unknown>);
+        if (result.changed) {
+          nextList[targetIndex] = result.entry as unknown as (typeof nextList)[number];
+          mutated = true;
+        }
+      }
+    }
   }
 
   if (!mutated) {
@@ -309,6 +387,7 @@ export function applyAgentDefaults(cfg: OpenClawConfig): OpenClawConfig {
         ...nextDefaults,
         subagents: nextSubagents,
       },
+      list: nextList,
     },
   };
 }

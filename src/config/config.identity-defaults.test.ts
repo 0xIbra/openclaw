@@ -50,10 +50,36 @@ describe("config identity defaults", () => {
       expect(cfg.messages?.ackReactionScope).toBe("group-mentions");
       expect(cfg.messages?.responsePrefix).toBeUndefined();
       expect(cfg.messages?.groupChat?.mentionPatterns).toBeUndefined();
-      expect(cfg.agents?.list).toBeUndefined();
+      expect(cfg.agents?.list?.[0]?.id).toBe("main");
+      expect(cfg.agents?.list?.[0]?.default).toBe(true);
+      expect(cfg.agents?.list?.[0]?.name).toBe("Ares");
+      expect(cfg.agents?.list?.[0]?.identity?.name).toBe("Ares");
+      expect(cfg.agents?.list?.[0]?.identity?.theme).toContain("master-control");
+      expect(cfg.agents?.list?.[0]?.identity?.emoji).toBe("🛡️");
       expect(cfg.agents?.defaults?.maxConcurrent).toBe(DEFAULT_AGENT_MAX_CONCURRENT);
       expect(cfg.agents?.defaults?.subagents?.maxConcurrent).toBe(DEFAULT_SUBAGENT_MAX_CONCURRENT);
       expect(cfg.session).toBeUndefined();
+    });
+  });
+
+  it("applies Ares identity defaults even when agent concurrency defaults are already set", async () => {
+    await withTempHome("openclaw-config-identity-", async (home) => {
+      const cfg = await writeAndLoadConfig(home, {
+        agents: {
+          defaults: {
+            maxConcurrent: 7,
+            subagents: { maxConcurrent: 2 },
+          },
+          list: [{ id: "main" }],
+        },
+      });
+
+      expect(cfg.agents?.defaults?.maxConcurrent).toBe(7);
+      expect(cfg.agents?.defaults?.subagents?.maxConcurrent).toBe(2);
+      expect(cfg.agents?.list?.[0]?.name).toBe("Ares");
+      expect(cfg.agents?.list?.[0]?.identity?.name).toBe("Ares");
+      expect(cfg.agents?.list?.[0]?.identity?.theme).toContain("master-control");
+      expect(cfg.agents?.list?.[0]?.identity?.emoji).toBe("🛡️");
     });
   });
 
