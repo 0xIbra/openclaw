@@ -583,6 +583,8 @@ export async function startGatewayServer(
       deps,
       cron,
       taskService,
+      taskRuntimeSupervisor,
+      taskLeadSupervisor,
       cronStorePath,
       execApprovalManager,
       loadGatewayModelCatalog,

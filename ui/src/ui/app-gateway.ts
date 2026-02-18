@@ -4,7 +4,14 @@ import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { GatewayEventFrame, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
-import type { AgentsListResult, PresenceEntry, HealthSnapshot, StatusSummary } from "./types.ts";
+import type {
+  AgentsListResult,
+  HealthSnapshot,
+  PresenceEntry,
+  StatusSummary,
+  TaskEscalationDto,
+  TaskRuntimeStatusDto,
+} from "./types.ts";
 import { CHAT_SESSIONS_ACTIVE_MINUTES, flushChatQueueForEvent } from "./app-chat.ts";
 import {
   applySettings,
@@ -27,7 +34,7 @@ import {
 import { loadNodes } from "./controllers/nodes.ts";
 import { patchProjectFromEvent } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
-import { patchTaskFromEvent } from "./controllers/tasks.ts";
+import { patchTaskAttemptFromEvent, patchTaskFromEvent } from "./controllers/tasks.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 
 type GatewayHost = {
@@ -59,6 +66,9 @@ type GatewayHost = {
   boardProjects: import("./types.ts").ProjectDto[];
   boardTasks: import("./types.ts").TaskDto[];
   boardSelectedProjectId: string | null;
+  boardTaskAttemptsByTaskId: Record<string, import("./types.ts").TaskAttemptDto[]>;
+  boardRuntimeStatus: TaskRuntimeStatusDto | null;
+  boardEscalations: TaskEscalationDto[];
 };
 
 type SessionDefaultsSnapshot = {
@@ -263,6 +273,80 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "tasks.changed") {
     patchTaskFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.attempt.changed") {
+    patchTaskAttemptFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.worker.changed") {
+    const worker = (evt.payload as { worker?: TaskRuntimeStatusDto["workers"][number] } | undefined)
+      ?.worker;
+    const runtime = host.boardRuntimeStatus;
+    if (!worker || !runtime) {
+      return;
+    }
+    const workers = [...runtime.workers];
+    const index = workers.findIndex((entry) => entry.agentId === worker.agentId);
+    if (index >= 0) {
+      workers[index] = worker;
+    } else {
+      workers.push(worker);
+    }
+    host.boardRuntimeStatus = { ...runtime, workers, updatedAtMs: Date.now() };
+    return;
+  }
+
+  if (evt.event === "tasks.lead.changed") {
+    const lead = (evt.payload as { lead?: TaskRuntimeStatusDto["leads"][number] } | undefined)
+      ?.lead;
+    const runtime = host.boardRuntimeStatus;
+    if (!lead || !runtime) {
+      return;
+    }
+    const leads = [...runtime.leads];
+    const index = leads.findIndex((entry) => entry.teamId === lead.teamId);
+    if (index >= 0) {
+      leads[index] = lead;
+    } else {
+      leads.push(lead);
+    }
+    host.boardRuntimeStatus = { ...runtime, leads, updatedAtMs: Date.now() };
+    return;
+  }
+
+  if (evt.event === "tasks.escalated") {
+    const payload = evt.payload as
+      | {
+          teamId?: string;
+          leadAgentId?: string;
+          threadId?: string;
+          taskId?: string | null;
+          requesterAgentId?: string;
+        }
+      | undefined;
+    if (!payload?.teamId || !payload.leadAgentId || !payload.threadId) {
+      return;
+    }
+    const escalation: TaskEscalationDto = {
+      teamId: payload.teamId,
+      leadAgentId: payload.leadAgentId,
+      threadId: payload.threadId,
+      taskId: payload.taskId ?? null,
+      requesterAgentId: payload.requesterAgentId,
+      escalatedAtMs: Date.now(),
+    };
+    host.boardEscalations = [escalation, ...host.boardEscalations].slice(0, 40);
+    return;
+  }
+
+  if (evt.event === "teams.changed" && host.boardRuntimeStatus) {
+    host.boardRuntimeStatus = {
+      ...host.boardRuntimeStatus,
+      updatedAtMs: Date.now(),
+    };
     return;
   }
 

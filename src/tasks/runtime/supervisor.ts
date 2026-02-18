@@ -42,6 +42,7 @@ export function createTaskRuntimeSupervisor(
   const createWorker =
     options.createWorker ?? ((opts: TaskWorkerOptions) => createTaskWorker(opts));
   const workers = new Map<string, TaskWorker>();
+  const pausedAgents = new Set<string>();
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   let reconcilePromise: Promise<void> | null = null;
   let reconcilePending = false;
@@ -51,12 +52,35 @@ export function createTaskRuntimeSupervisor(
     options.onWorkerEvent?.(event);
   };
 
+  const readStatus = (agentId: string): TaskWorkerStatus | null => {
+    const worker = workers.get(agentId);
+    return worker ? worker.getStatus() : null;
+  };
+
   const runReconcile = async () => {
     const active = mapActiveWorkerAgents(options.taskService);
     for (const [agentId, teamIds] of active.entries()) {
       const existing = workers.get(agentId);
+      if (pausedAgents.has(agentId)) {
+        if (existing) {
+          existing.setTeamIds(teamIds);
+        } else {
+          const pausedWorker = createWorker({
+            taskService: options.taskService,
+            executor: options.createExecutor(agentId),
+            agentId,
+            teamIds,
+            onEvent: emit,
+          });
+          workers.set(agentId, pausedWorker);
+          pausedWorker.setTeamIds(teamIds);
+          emit({ reason: "status", worker: pausedWorker.getStatus() });
+        }
+        continue;
+      }
       if (existing) {
         existing.setTeamIds(teamIds);
+        existing.start();
         continue;
       }
       const worker = createWorker({
@@ -76,6 +100,7 @@ export function createTaskRuntimeSupervisor(
       if (activeAgents.has(agentId)) {
         continue;
       }
+      pausedAgents.delete(agentId);
       await worker.stop();
       emit({ reason: "stopped", worker: worker.getStatus() });
       workers.delete(agentId);
@@ -133,6 +158,53 @@ export function createTaskRuntimeSupervisor(
       [...workers.values()].map((worker) => worker.getStatus()),
     reconcileNow: async () => {
       await reconcileWorkers();
+    },
+    pauseAgent: async (agentId: string) => {
+      const normalizedAgentId = agentId.trim();
+      if (!normalizedAgentId) {
+        return null;
+      }
+      pausedAgents.add(normalizedAgentId);
+      const existing = workers.get(normalizedAgentId);
+      if (existing) {
+        await existing.stop();
+        emit({ reason: "status", worker: existing.getStatus() });
+      }
+      await reconcileWorkers();
+      return readStatus(normalizedAgentId);
+    },
+    resumeAgent: async (agentId: string) => {
+      const normalizedAgentId = agentId.trim();
+      if (!normalizedAgentId) {
+        return null;
+      }
+      pausedAgents.delete(normalizedAgentId);
+      const existing = workers.get(normalizedAgentId);
+      if (existing) {
+        existing.start();
+      }
+      await reconcileWorkers();
+      return readStatus(normalizedAgentId);
+    },
+    restartAgent: async (agentId: string) => {
+      const normalizedAgentId = agentId.trim();
+      if (!normalizedAgentId) {
+        return null;
+      }
+      pausedAgents.delete(normalizedAgentId);
+      const existing = workers.get(normalizedAgentId);
+      if (existing) {
+        await existing.stop();
+        emit({ reason: "stopped", worker: existing.getStatus() });
+        existing.start();
+        emit({ reason: "started", worker: existing.getStatus() });
+      }
+      await reconcileWorkers();
+      const status = readStatus(normalizedAgentId);
+      if (status) {
+        return status;
+      }
+      return null;
     },
   };
 }

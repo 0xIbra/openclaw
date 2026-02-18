@@ -313,6 +313,41 @@ export const TasksRequeueResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TasksAttemptsListParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptsListResultSchema = Type.Object(
+  {
+    attempts: Type.Array(TaskAttemptSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksForceFailActiveParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    reason: NonEmptyString,
+    actor: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksForceFailActiveResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+    attempt: TaskAttemptSchema,
+    retryEligible: Type.Boolean(),
+    remainingAttempts: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
 export const TasksChangedEventSchema = Type.Object(
   {
     reason: Type.Union([
@@ -379,6 +414,22 @@ export const TasksWorkerChangedEventSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TasksRuntimeStatusParamsSchema = Type.Object({}, { additionalProperties: false });
+
+export const TasksRuntimeAgentControlParamsSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksRuntimeAgentControlResultSchema = Type.Object(
+  {
+    worker: Type.Union([TaskWorkerStatusSchema, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
 export const TaskLeadStateSchema = Type.Union([
   Type.Literal("idle"),
   Type.Literal("processing"),
@@ -423,6 +474,26 @@ export const TasksEscalatedEventSchema = Type.Object(
     threadId: NonEmptyString,
     taskId: Type.Union([Type.String(), Type.Null()]),
     requesterAgentId: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskRuntimeTeamSchema = Type.Object(
+  {
+    teamId: NonEmptyString,
+    teamName: NonEmptyString,
+    leadAgentId: Type.Union([Type.String(), Type.Null()]),
+    memberAgentIds: Type.Array(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksRuntimeStatusResultSchema = Type.Object(
+  {
+    workers: Type.Array(TaskWorkerStatusSchema),
+    leads: Type.Array(TaskLeadStatusSchema),
+    teams: Type.Array(TaskRuntimeTeamSchema),
+    updatedAtMs: Type.Integer({ minimum: 0 }),
   },
   { additionalProperties: false },
 );

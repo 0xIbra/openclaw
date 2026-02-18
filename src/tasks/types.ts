@@ -329,6 +329,12 @@ export type TaskAttemptFailResult = {
   remainingAttempts: number;
 };
 
+export type TaskForceFailActiveInput = {
+  taskId: string;
+  reason: string;
+  actor: string;
+};
+
 export type TaskRequeueInput = {
   taskId: string;
   assignedAgentId?: string | null;

@@ -229,10 +229,16 @@ import {
   type Task,
   type TaskAttempt,
   TaskAttemptSchema,
+  type TaskRuntimeTeam,
+  TaskRuntimeTeamSchema,
   type TaskClaim,
   TaskClaimSchema,
   type TasksAttemptChangedEvent,
   TasksAttemptChangedEventSchema,
+  type TasksAttemptsListParams,
+  TasksAttemptsListParamsSchema,
+  type TasksAttemptsListResult,
+  TasksAttemptsListResultSchema,
   type TasksAttemptFailParams,
   TasksAttemptFailParamsSchema,
   type TasksAttemptFailResult,
@@ -256,6 +262,10 @@ import {
   TasksChangedEventSchema,
   type TasksCreateParams,
   TasksCreateParamsSchema,
+  type TasksForceFailActiveParams,
+  TasksForceFailActiveParamsSchema,
+  type TasksForceFailActiveResult,
+  TasksForceFailActiveResultSchema,
   type TasksGetParams,
   TasksGetParamsSchema,
   type TasksListParams,
@@ -266,6 +276,14 @@ import {
   TasksLeaseHeartbeatParamsSchema,
   type TasksLeaseHeartbeatResult,
   TasksLeaseHeartbeatResultSchema,
+  type TasksRuntimeAgentControlParams,
+  TasksRuntimeAgentControlParamsSchema,
+  type TasksRuntimeAgentControlResult,
+  TasksRuntimeAgentControlResultSchema,
+  type TasksRuntimeStatusParams,
+  TasksRuntimeStatusParamsSchema,
+  type TasksRuntimeStatusResult,
+  TasksRuntimeStatusResultSchema,
   type TasksRequeueParams,
   TasksRequeueParamsSchema,
   type TasksRequeueResult,
@@ -497,6 +515,18 @@ export const validateTasksAttemptFailParams = ajv.compile<TasksAttemptFailParams
   TasksAttemptFailParamsSchema,
 );
 export const validateTasksRequeueParams = ajv.compile<TasksRequeueParams>(TasksRequeueParamsSchema);
+export const validateTasksAttemptsListParams = ajv.compile<TasksAttemptsListParams>(
+  TasksAttemptsListParamsSchema,
+);
+export const validateTasksForceFailActiveParams = ajv.compile<TasksForceFailActiveParams>(
+  TasksForceFailActiveParamsSchema,
+);
+export const validateTasksRuntimeStatusParams = ajv.compile<TasksRuntimeStatusParams>(
+  TasksRuntimeStatusParamsSchema,
+);
+export const validateTasksRuntimeAgentControlParams = ajv.compile<TasksRuntimeAgentControlParams>(
+  TasksRuntimeAgentControlParamsSchema,
+);
 export const validateTeamsListParams = ajv.compile<TeamsListParams>(TeamsListParamsSchema);
 export const validateTeamsCreateParams = ajv.compile<TeamsCreateParams>(TeamsCreateParamsSchema);
 export const validateTeamsGetParams = ajv.compile<TeamsGetParams>(TeamsGetParamsSchema);
@@ -670,9 +700,18 @@ export {
   TasksAttemptFailResultSchema,
   TasksRequeueParamsSchema,
   TasksRequeueResultSchema,
+  TasksAttemptsListParamsSchema,
+  TasksAttemptsListResultSchema,
+  TasksForceFailActiveParamsSchema,
+  TasksForceFailActiveResultSchema,
+  TasksRuntimeStatusParamsSchema,
+  TasksRuntimeStatusResultSchema,
+  TasksRuntimeAgentControlParamsSchema,
+  TasksRuntimeAgentControlResultSchema,
   TasksChangedEventSchema,
   TasksClaimedEventSchema,
   TasksAttemptChangedEventSchema,
+  TaskRuntimeTeamSchema,
   TeamSchema,
   TeamMemberSchema,
   TeamWithMembersResultSchema,
@@ -802,6 +841,7 @@ export type {
   Task,
   TaskClaim,
   TaskAttempt,
+  TaskRuntimeTeam,
   TasksListParams,
   TasksListResult,
   TasksCreateParams,
@@ -820,6 +860,14 @@ export type {
   TasksAttemptFailResult,
   TasksRequeueParams,
   TasksRequeueResult,
+  TasksAttemptsListParams,
+  TasksAttemptsListResult,
+  TasksForceFailActiveParams,
+  TasksForceFailActiveResult,
+  TasksRuntimeStatusParams,
+  TasksRuntimeStatusResult,
+  TasksRuntimeAgentControlParams,
+  TasksRuntimeAgentControlResult,
   TasksChangedEvent,
   TasksClaimedEvent,
   TasksAttemptChangedEvent,

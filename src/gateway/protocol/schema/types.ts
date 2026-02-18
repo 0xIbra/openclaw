@@ -138,11 +138,14 @@ import type {
 } from "./sessions.js";
 import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import type {
+  TaskRuntimeTeamSchema,
   TaskSchema,
   TaskAttemptSchema,
   TaskClaimSchema,
   TaskLeadStatusSchema,
   TasksAttemptChangedEventSchema,
+  TasksAttemptsListParamsSchema,
+  TasksAttemptsListResultSchema,
   TasksAttemptFailParamsSchema,
   TasksAttemptFailResultSchema,
   TasksAttemptFinishParamsSchema,
@@ -155,12 +158,18 @@ import type {
   TasksChangedEventSchema,
   TasksCreateParamsSchema,
   TasksEscalatedEventSchema,
+  TasksForceFailActiveParamsSchema,
+  TasksForceFailActiveResultSchema,
   TasksGetParamsSchema,
   TasksLeaseHeartbeatParamsSchema,
   TasksLeaseHeartbeatResultSchema,
   TasksLeadChangedEventSchema,
   TasksListParamsSchema,
   TasksListResultSchema,
+  TasksRuntimeAgentControlParamsSchema,
+  TasksRuntimeAgentControlResultSchema,
+  TasksRuntimeStatusParamsSchema,
+  TasksRuntimeStatusResultSchema,
   TasksRequeueParamsSchema,
   TasksRequeueResultSchema,
   TasksTransitionParamsSchema,
@@ -312,6 +321,7 @@ export type Task = Static<typeof TaskSchema>;
 export type TaskClaim = Static<typeof TaskClaimSchema>;
 export type TaskAttempt = Static<typeof TaskAttemptSchema>;
 export type TaskLeadStatus = Static<typeof TaskLeadStatusSchema>;
+export type TaskRuntimeTeam = Static<typeof TaskRuntimeTeamSchema>;
 export type TasksListParams = Static<typeof TasksListParamsSchema>;
 export type TasksListResult = Static<typeof TasksListResultSchema>;
 export type TasksCreateParams = Static<typeof TasksCreateParamsSchema>;
@@ -330,6 +340,14 @@ export type TasksAttemptFailParams = Static<typeof TasksAttemptFailParamsSchema>
 export type TasksAttemptFailResult = Static<typeof TasksAttemptFailResultSchema>;
 export type TasksRequeueParams = Static<typeof TasksRequeueParamsSchema>;
 export type TasksRequeueResult = Static<typeof TasksRequeueResultSchema>;
+export type TasksAttemptsListParams = Static<typeof TasksAttemptsListParamsSchema>;
+export type TasksAttemptsListResult = Static<typeof TasksAttemptsListResultSchema>;
+export type TasksForceFailActiveParams = Static<typeof TasksForceFailActiveParamsSchema>;
+export type TasksForceFailActiveResult = Static<typeof TasksForceFailActiveResultSchema>;
+export type TasksRuntimeStatusParams = Static<typeof TasksRuntimeStatusParamsSchema>;
+export type TasksRuntimeStatusResult = Static<typeof TasksRuntimeStatusResultSchema>;
+export type TasksRuntimeAgentControlParams = Static<typeof TasksRuntimeAgentControlParamsSchema>;
+export type TasksRuntimeAgentControlResult = Static<typeof TasksRuntimeAgentControlResultSchema>;
 export type TasksChangedEvent = Static<typeof TasksChangedEventSchema>;
 export type TasksClaimedEvent = Static<typeof TasksClaimedEventSchema>;
 export type TasksAttemptChangedEvent = Static<typeof TasksAttemptChangedEventSchema>;

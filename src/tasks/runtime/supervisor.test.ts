@@ -101,6 +101,23 @@ describe("task runtime supervisor", () => {
         .toSorted(),
     ).toEqual(["member-agent"]);
 
+    const paused = await supervisor.pauseAgent("member-agent");
+    expect(paused?.state).toBe("paused");
+    expect(stoppedAgents).toContain("member-agent");
+
+    const resumed = await supervisor.resumeAgent("member-agent");
+    await waitFor(() =>
+      supervisor
+        .getWorkerStatuses()
+        .some((entry) => entry.agentId === "member-agent" && entry.state !== "paused"),
+    );
+    expect(resumed?.agentId).toBe("member-agent");
+    expect(startedAgents.filter((entry) => entry === "member-agent").length).toBeGreaterThan(1);
+
+    const restarted = await supervisor.restartAgent("member-agent");
+    expect(restarted?.agentId).toBe("member-agent");
+    expect(startedAgents.filter((entry) => entry === "member-agent").length).toBeGreaterThan(2);
+
     const removed = service.removeTeamMember(team.id, "member-agent");
     expect(removed).toBe(true);
     await supervisor.reconcileNow();

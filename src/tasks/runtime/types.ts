@@ -104,6 +104,23 @@ export type TaskRuntimeSupervisor = {
   stop: () => Promise<void>;
   getWorkerStatuses: () => TaskWorkerStatus[];
   reconcileNow: () => Promise<void>;
+  pauseAgent: (agentId: string) => Promise<TaskWorkerStatus | null>;
+  resumeAgent: (agentId: string) => Promise<TaskWorkerStatus | null>;
+  restartAgent: (agentId: string) => Promise<TaskWorkerStatus | null>;
+};
+
+export type TaskRuntimeTeamStatus = {
+  teamId: string;
+  teamName: string;
+  leadAgentId: string | null;
+  memberAgentIds: string[];
+};
+
+export type TaskRuntimeStatus = {
+  workers: TaskWorkerStatus[];
+  leads: TaskLeadStatus[];
+  teams: TaskRuntimeTeamStatus[];
+  updatedAtMs: number;
 };
 
 export type TaskLeadState = "idle" | "processing" | "delegating" | "waiting" | "paused";

@@ -390,6 +390,8 @@ export type TaskDto = {
   dependsOnTaskIds: string[];
   blockedByTaskIds: string[];
   assignedAgentId: string | null;
+  teamId: string | null;
+  currentAttemptId: string | null;
   maxAttempts: number;
   attemptCount: number;
   relevantPaths: string[];
@@ -399,6 +401,74 @@ export type TaskDto = {
   updatedAtMs: number;
   startedAtMs: number | null;
   completedAtMs: number | null;
+};
+
+export type TaskAttemptDto = {
+  id: string;
+  taskId: string;
+  status: string;
+  startedAtMs: number;
+  endedAtMs: number | null;
+  agentId: string | null;
+  notes: string | null;
+  attemptNumber: number | null;
+  claimId: string | null;
+  teamId: string | null;
+  sessionBackend: string | null;
+  sessionId: string | null;
+  summary: string | null;
+  errorText: string | null;
+  commandOutcome: Record<string, unknown>;
+  testOutcome: Record<string, unknown>;
+  changedFiles: string[];
+  metrics: Record<string, unknown>;
+  createdAtMs: number | null;
+  updatedAtMs: number | null;
+};
+
+export type TaskRuntimeWorkerDto = {
+  agentId: string;
+  teamIds: string[];
+  state: "idle" | "claiming" | "running" | "recovering" | "paused" | "unhealthy";
+  currentTaskId: string | null;
+  lastHeartbeatAtMs: number | null;
+  errorStreak: number;
+  lastError: string | null;
+  updatedAtMs: number;
+};
+
+export type TaskRuntimeLeadDto = {
+  teamId: string;
+  teamName: string;
+  leadAgentId: string;
+  state: "idle" | "processing" | "delegating" | "waiting" | "paused";
+  lastError: string | null;
+  lastPolledAtMs: number | null;
+  waitingQuestionCount: number;
+  updatedAtMs: number;
+};
+
+export type TaskRuntimeTeamDto = {
+  teamId: string;
+  teamName: string;
+  leadAgentId: string | null;
+  memberAgentIds: string[];
+};
+
+export type TaskRuntimeStatusDto = {
+  workers: TaskRuntimeWorkerDto[];
+  leads: TaskRuntimeLeadDto[];
+  teams: TaskRuntimeTeamDto[];
+  updatedAtMs: number;
+};
+
+export type TaskEscalationDto = {
+  teamId: string;
+  leadAgentId: string;
+  threadId: string;
+  taskId: string | null;
+  requesterAgentId?: string;
+  escalatedAtMs: number;
 };
 
 export type SkillsStatusConfigCheck = {

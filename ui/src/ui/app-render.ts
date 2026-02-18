@@ -54,6 +54,13 @@ import {
 } from "./controllers/skills.ts";
 import {
   createTask,
+  forceFailActiveTask,
+  listTaskAttempts,
+  loadRuntimeStatus,
+  pauseRuntimeAgent,
+  requeueTask,
+  restartRuntimeAgent,
+  resumeRuntimeAgent,
   loadTasks,
   transitionTaskOptimistic,
   updateTask,
@@ -115,6 +122,36 @@ export function renderApp(state: AppViewState) {
     state.agentsList?.defaultId ??
     state.agentsList?.agents?.[0]?.id ??
     null;
+  const selectedBoardTask = state.boardSelectedTaskId
+    ? (state.boardTasks.find((task) => task.id === state.boardSelectedTaskId) ?? null)
+    : null;
+  const selectedBoardAttempts = selectedBoardTask
+    ? (state.boardTaskAttemptsByTaskId[selectedBoardTask.id] ?? [])
+    : [];
+  const selectedBoardAttemptsLoading =
+    selectedBoardTask != null && state.boardTaskAttemptsLoadingTaskId === selectedBoardTask.id;
+  const boardModal =
+    state.boardActiveModal === "createProject"
+      ? {
+          type: "createProject" as const,
+          draft: state.boardProjectDraft,
+          error: state.boardModalError,
+        }
+      : state.boardActiveModal === "createTask" || state.boardActiveModal === "editTask"
+        ? {
+            type: state.boardActiveModal,
+            draft: state.boardTaskDraft,
+            error: state.boardModalError,
+          }
+        : state.boardActiveModal === "confirmAction" && state.boardConfirmAction
+          ? {
+              type: "confirmAction" as const,
+              title: state.boardConfirmAction.title,
+              message: state.boardConfirmAction.message,
+              confirmLabel: state.boardConfirmAction.confirmLabel,
+              tone: state.boardConfirmAction.tone,
+            }
+          : null;
 
   return html`
     <div class="shell ${isChat ? "shell--chat" : ""} ${chatFocus ? "shell--chat-focus" : ""} ${state.settings.navCollapsed ? "shell--nav-collapsed" : ""} ${state.onboarding ? "shell--onboarding" : ""}">
@@ -310,6 +347,15 @@ export function renderApp(state: AppViewState) {
                 tasks: state.boardTasks,
                 selectedProjectId: state.boardSelectedProjectId,
                 showArchivedProjects: state.boardShowArchivedProjects,
+                modal: boardModal,
+                selectedTaskId: state.boardSelectedTaskId,
+                selectedTaskAttempts: selectedBoardAttempts,
+                selectedTaskAttemptsLoading: selectedBoardAttemptsLoading,
+                runtimeStatus: state.boardRuntimeStatus,
+                runtimeLoading: state.boardRuntimeLoading,
+                runtimeError: state.boardRuntimeError,
+                operatorPendingKey: state.boardOperatorPendingKey,
+                escalations: state.boardEscalations,
                 filters: {
                   assignee: state.boardFilterAssignee,
                   type: state.boardFilterType,
@@ -319,6 +365,7 @@ export function renderApp(state: AppViewState) {
                 },
                 onSelectProject: (projectId) => {
                   state.boardSelectedProjectId = projectId || null;
+                  state.boardSelectedTaskId = null;
                   void loadTasks(state);
                 },
                 onToggleArchivedProjects: (enabled) => {
@@ -334,110 +381,303 @@ export function renderApp(state: AppViewState) {
                   void loadTasks(state);
                 },
                 onRefresh: () => {
-                  void loadProjects(state).then(() => loadTasks(state));
-                },
-                onCreateProject: async () => {
-                  const name = window.prompt("Project name");
-                  if (!name?.trim()) {
-                    return;
-                  }
-                  const description = window.prompt("Description (optional)") ?? undefined;
-                  const repoRoot = window.prompt("Repo root path (optional)") ?? undefined;
-                  try {
-                    await createProject(state, {
-                      name,
-                      description,
-                      repoRoot,
+                  void loadProjects(state)
+                    .then(() => loadTasks(state))
+                    .then(async () => {
+                      state.boardRuntimeLoading = true;
+                      state.boardRuntimeError = null;
+                      try {
+                        await loadRuntimeStatus(state);
+                      } catch (err) {
+                        state.boardRuntimeError = String(err);
+                      } finally {
+                        state.boardRuntimeLoading = false;
+                      }
                     });
-                    await loadTasks(state);
-                  } catch (err) {
-                    state.boardError = String(err);
-                  }
                 },
-                onCreateTask: async () => {
+                onRefreshRuntime: () => {
+                  state.boardRuntimeLoading = true;
+                  state.boardRuntimeError = null;
+                  void loadRuntimeStatus(state)
+                    .catch((err) => {
+                      state.boardRuntimeError = String(err);
+                    })
+                    .finally(() => {
+                      state.boardRuntimeLoading = false;
+                    });
+                },
+                onOpenCreateProject: () => {
+                  state.boardProjectDraft = {
+                    name: "",
+                    description: "",
+                    repoRoot: "",
+                  };
+                  state.boardModalError = null;
+                  state.boardActiveModal = "createProject";
+                },
+                onOpenCreateTask: () => {
                   if (!state.boardSelectedProjectId) {
                     return;
                   }
-                  const title = window.prompt("Task title");
-                  if (!title?.trim()) {
+                  state.boardTaskDraft = {
+                    id: null,
+                    title: "",
+                    description: "",
+                    type: "feature",
+                    priority: "medium",
+                    assignedAgentId: "",
+                    tags: "",
+                  };
+                  state.boardModalError = null;
+                  state.boardActiveModal = "createTask";
+                },
+                onOpenEditTask: (task) => {
+                  state.boardTaskDraft = {
+                    id: task.id,
+                    title: task.title,
+                    description: task.description,
+                    type: task.type,
+                    priority: task.priority,
+                    assignedAgentId: task.assignedAgentId ?? "",
+                    tags: task.tags.join(", "),
+                  };
+                  state.boardModalError = null;
+                  state.boardActiveModal = "editTask";
+                },
+                onOpenTaskDrawer: (taskId) => {
+                  state.boardSelectedTaskId = taskId;
+                  if (state.boardTaskAttemptsByTaskId[taskId]) {
                     return;
                   }
-                  const description = window.prompt("Task description", "Describe the work.") ?? "";
-                  const typeRaw = (
-                    window.prompt(
-                      "Task type (feature|bugfix|refactor|test|review|research|devops)",
-                      "feature",
-                    ) ?? "feature"
-                  )
-                    .trim()
-                    .toLowerCase();
-                  const type =
-                    typeRaw === "bugfix" ||
-                    typeRaw === "refactor" ||
-                    typeRaw === "test" ||
-                    typeRaw === "review" ||
-                    typeRaw === "research" ||
-                    typeRaw === "devops"
-                      ? typeRaw
-                      : "feature";
-                  const priorityRaw = (
-                    window.prompt("Priority (critical|high|medium|low)", "medium") ?? "medium"
-                  )
-                    .trim()
-                    .toLowerCase();
-                  const priority =
-                    priorityRaw === "critical" || priorityRaw === "high" || priorityRaw === "low"
-                      ? priorityRaw
-                      : "medium";
-                  const assignedAgentId =
-                    window.prompt("Assigned agent id (optional)") ?? undefined;
-                  const tagsRaw = window.prompt("Tags (comma-separated, optional)") ?? "";
-                  const tags = tagsRaw
+                  state.boardTaskAttemptsLoadingTaskId = taskId;
+                  void listTaskAttempts(state, { taskId, limit: 50 })
+                    .catch((err) => {
+                      state.boardError = String(err);
+                    })
+                    .finally(() => {
+                      if (state.boardTaskAttemptsLoadingTaskId === taskId) {
+                        state.boardTaskAttemptsLoadingTaskId = null;
+                      }
+                    });
+                },
+                onCloseTaskDrawer: () => {
+                  state.boardSelectedTaskId = null;
+                },
+                onUpdateProjectDraft: (patch) => {
+                  state.boardProjectDraft = {
+                    ...state.boardProjectDraft,
+                    ...patch,
+                  };
+                },
+                onUpdateTaskDraft: (patch) => {
+                  state.boardTaskDraft = {
+                    ...state.boardTaskDraft,
+                    ...patch,
+                  };
+                },
+                onSubmitProjectForm: () => {
+                  const name = state.boardProjectDraft.name.trim();
+                  if (!name) {
+                    state.boardModalError = "Project name is required.";
+                    return;
+                  }
+                  state.boardBusy = true;
+                  state.boardModalError = null;
+                  void createProject(state, {
+                    name,
+                    description: state.boardProjectDraft.description.trim() || undefined,
+                    repoRoot: state.boardProjectDraft.repoRoot.trim() || undefined,
+                  })
+                    .then(async () => {
+                      state.boardActiveModal = null;
+                      await loadTasks(state);
+                    })
+                    .catch((err) => {
+                      state.boardModalError = String(err);
+                    })
+                    .finally(() => {
+                      state.boardBusy = false;
+                    });
+                },
+                onSubmitTaskForm: () => {
+                  if (!state.boardSelectedProjectId) {
+                    state.boardModalError = "Select a project first.";
+                    return;
+                  }
+                  const title = state.boardTaskDraft.title.trim();
+                  if (!title) {
+                    state.boardModalError = "Task title is required.";
+                    return;
+                  }
+                  const description = state.boardTaskDraft.description.trim();
+                  if (!description) {
+                    state.boardModalError = "Task description is required.";
+                    return;
+                  }
+                  const tags = state.boardTaskDraft.tags
                     .split(",")
                     .map((entry) => entry.trim())
                     .filter(Boolean);
-                  try {
-                    await createTask(state, {
-                      projectId: state.boardSelectedProjectId,
+                  state.boardBusy = true;
+                  state.boardModalError = null;
+                  const assignedAgentId = state.boardTaskDraft.assignedAgentId.trim();
+                  const finish = () => {
+                    state.boardActiveModal = null;
+                    state.boardBusy = false;
+                  };
+                  if (state.boardTaskDraft.id) {
+                    void updateTask(state, {
+                      id: state.boardTaskDraft.id,
                       title,
-                      description: description || "No description.",
-                      type,
-                      priority,
-                      assignedAgentId,
+                      description,
+                      type: state.boardTaskDraft.type,
+                      priority: state.boardTaskDraft.priority,
+                      assignedAgentId: assignedAgentId ? assignedAgentId : null,
                       tags,
-                    });
-                  } catch (err) {
-                    state.boardError = String(err);
+                    })
+                      .then(finish)
+                      .catch((err) => {
+                        state.boardModalError = String(err);
+                        state.boardBusy = false;
+                      });
+                    return;
                   }
+                  void createTask(state, {
+                    projectId: state.boardSelectedProjectId,
+                    title,
+                    description,
+                    type: state.boardTaskDraft.type,
+                    priority: state.boardTaskDraft.priority,
+                    assignedAgentId: assignedAgentId || undefined,
+                    tags,
+                  })
+                    .then(finish)
+                    .catch((err) => {
+                      state.boardModalError = String(err);
+                      state.boardBusy = false;
+                    });
                 },
                 onMoveTask: (taskId, toStatus) => {
                   void transitionTaskOptimistic(state, { id: taskId, toStatus });
                 },
-                onEditTask: (task) => {
-                  const title = window.prompt("Task title", task.title);
-                  if (title == null) {
+                onCloseModal: () => {
+                  state.boardActiveModal = null;
+                  state.boardConfirmAction = null;
+                  state.boardModalError = null;
+                },
+                onConfirmModal: () => {
+                  if (!state.boardConfirmAction) {
                     return;
                   }
-                  const description = window.prompt("Task description", task.description);
-                  const assignedAgentId = window.prompt(
-                    "Assigned agent id (blank to clear)",
-                    task.assignedAgentId ?? "",
-                  );
-                  const tagsRaw = window.prompt("Tags (comma-separated)", task.tags.join(", "));
-                  const tags = (tagsRaw ?? "")
-                    .split(",")
-                    .map((entry) => entry.trim())
-                    .filter(Boolean);
-                  void updateTask(state, {
-                    id: task.id,
-                    title: title.trim(),
-                    description: (description ?? "").trim(),
-                    assignedAgentId:
-                      assignedAgentId == null ? task.assignedAgentId : assignedAgentId,
-                    tags,
-                  }).catch((err) => {
-                    state.boardError = String(err);
-                  });
+                  const action = state.boardConfirmAction.action;
+                  const key =
+                    action.type === "requeueTask" || action.type === "forceFailTask"
+                      ? `${action.type}:${action.taskId}`
+                      : `${action.type}:${action.agentId}`;
+                  state.boardOperatorPendingKey = key;
+                  const runAction = async () => {
+                    if (action.type === "pauseWorker") {
+                      await pauseRuntimeAgent(state, action.agentId);
+                    } else if (action.type === "resumeWorker") {
+                      await resumeRuntimeAgent(state, action.agentId);
+                    } else if (action.type === "restartWorker") {
+                      await restartRuntimeAgent(state, action.agentId);
+                    } else if (action.type === "requeueTask") {
+                      await requeueTask(state, {
+                        taskId: action.taskId,
+                        assignedAgentId: action.assignedAgentId,
+                      });
+                    } else if (action.type === "forceFailTask") {
+                      await forceFailActiveTask(state, {
+                        taskId: action.taskId,
+                        reason: "Operator forced failure from Control UI",
+                        actor: "control-ui",
+                      });
+                    }
+                  };
+                  void runAction()
+                    .then(async () => {
+                      if (action.type === "requeueTask" || action.type === "forceFailTask") {
+                        if (state.boardSelectedTaskId) {
+                          state.boardTaskAttemptsLoadingTaskId = state.boardSelectedTaskId;
+                          try {
+                            await listTaskAttempts(state, {
+                              taskId: state.boardSelectedTaskId,
+                              limit: 50,
+                            });
+                          } finally {
+                            state.boardTaskAttemptsLoadingTaskId = null;
+                          }
+                        }
+                        await loadTasks(state);
+                      }
+                      await loadRuntimeStatus(state).catch(() => undefined);
+                    })
+                    .catch((err) => {
+                      state.boardError = String(err);
+                    })
+                    .finally(() => {
+                      state.boardOperatorPendingKey = null;
+                      state.boardActiveModal = null;
+                      state.boardConfirmAction = null;
+                    });
+                },
+                onRequestPauseAgent: (agentId) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardConfirmAction = {
+                    title: "Pause Worker",
+                    message: `Pause worker ${agentId}? The agent will stop claiming new tasks.`,
+                    confirmLabel: "Pause Worker",
+                    tone: "primary",
+                    action: { type: "pauseWorker", agentId },
+                  };
+                },
+                onRequestResumeAgent: (agentId) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardConfirmAction = {
+                    title: "Resume Worker",
+                    message: `Resume worker ${agentId}?`,
+                    confirmLabel: "Resume Worker",
+                    tone: "primary",
+                    action: { type: "resumeWorker", agentId },
+                  };
+                },
+                onRequestRestartAgent: (agentId) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardConfirmAction = {
+                    title: "Restart Worker",
+                    message: `Restart worker ${agentId}? Current in-flight execution may be interrupted.`,
+                    confirmLabel: "Restart Worker",
+                    tone: "danger",
+                    action: { type: "restartWorker", agentId },
+                  };
+                },
+                onRequestRequeueTask: (task) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardConfirmAction = {
+                    title: "Requeue Task",
+                    message: `Requeue task "${task.title}" back to assigned/backlog?`,
+                    confirmLabel: "Requeue Task",
+                    tone: "primary",
+                    action: {
+                      type: "requeueTask",
+                      taskId: task.id,
+                      assignedAgentId: task.assignedAgentId,
+                    },
+                  };
+                },
+                onRequestForceFailTask: (task) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardConfirmAction = {
+                    title: "Force Fail Active Task",
+                    message: `Force-fail active attempt for "${task.title}"?`,
+                    confirmLabel: "Force Fail",
+                    tone: "danger",
+                    action: {
+                      type: "forceFailTask",
+                      taskId: task.id,
+                    },
+                  };
                 },
               })
             : nothing

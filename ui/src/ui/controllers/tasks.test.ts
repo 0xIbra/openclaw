@@ -15,6 +15,8 @@ function createState(overrides: Partial<TasksState> = {}): TasksState {
     boardFilterPriority: "",
     boardFilterTag: "",
     boardFilterQuery: "",
+    boardTaskAttemptsByTaskId: {},
+    boardRuntimeStatus: null,
     ...overrides,
   };
 }
@@ -45,6 +47,8 @@ describe("tasks controller", () => {
           dependsOnTaskIds: [],
           blockedByTaskIds: [],
           assignedAgentId: null,
+          teamId: null,
+          currentAttemptId: null,
           maxAttempts: 3,
           attemptCount: 0,
           relevantPaths: [],

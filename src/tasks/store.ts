@@ -21,6 +21,7 @@ import type {
   TaskAttemptStartInput,
   TaskAttemptStartResult,
   TaskAttemptUpdateInput,
+  TaskForceFailActiveInput,
   TaskClaimLeaseInput,
   TaskClaimLeaseResult,
   TaskClaimNextInput,
@@ -1880,6 +1881,127 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     }
   }
 
+  function forceFailActiveTask(
+    input: TaskForceFailActiveInput & { nowMs: number },
+  ): TaskAttemptFailResult | null {
+    const actor = input.actor.trim() || "operator";
+    const reason = input.reason.trim() || "operator requested force-fail";
+    const summary = `Force-failed by ${actor}: ${reason}`;
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const taskRow = db.prepare(`SELECT * FROM tasks WHERE id = ? LIMIT 1`).get(input.taskId) as
+        | TaskRow
+        | undefined;
+      if (!taskRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const claimRow = db
+        .prepare(
+          `SELECT *
+           FROM task_claims
+           WHERE task_id = ?
+             AND state = 'active'
+           ORDER BY leased_at_ms DESC
+           LIMIT 1`,
+        )
+        .get(input.taskId) as TaskClaimRow | undefined;
+      if (!claimRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const attemptRow =
+        (taskRow.current_attempt_id
+          ? (db
+              .prepare(
+                `SELECT *
+                 FROM task_attempts
+                 WHERE id = ?
+                   AND task_id = ?
+                 LIMIT 1`,
+              )
+              .get(taskRow.current_attempt_id, input.taskId) as TaskAttemptRow | undefined)
+          : undefined) ??
+        (db
+          .prepare(
+            `SELECT *
+             FROM task_attempts
+             WHERE task_id = ?
+               AND status = 'running'
+             ORDER BY started_at_ms DESC
+             LIMIT 1`,
+          )
+          .get(input.taskId) as TaskAttemptRow | undefined);
+
+      if (!attemptRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      db.prepare(
+        `UPDATE task_attempts
+         SET status = 'failed',
+             ended_at_ms = ?,
+             summary = ?,
+             error_text = ?,
+             notes = ?,
+             updated_at_ms = ?
+         WHERE id = ?`,
+      ).run(
+        input.nowMs,
+        summary,
+        reason,
+        `[operator:${actor}] ${reason}`,
+        input.nowMs,
+        attemptRow.id,
+      );
+
+      db.prepare(
+        `UPDATE task_claims
+         SET state = 'released',
+             released_at_ms = ?,
+             heartbeat_at_ms = ?
+         WHERE id = ?
+           AND state = 'active'`,
+      ).run(input.nowMs, input.nowMs, claimRow.id);
+
+      db.prepare(
+        `UPDATE tasks
+         SET status = 'failed',
+             current_attempt_id = ?,
+             updated_at_ms = ?
+         WHERE id = ?`,
+      ).run(attemptRow.id, input.nowMs, input.taskId);
+
+      const task = getTask(input.taskId);
+      const claim = getTaskClaim(claimRow.id);
+      const attempt = db
+        .prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`)
+        .get(attemptRow.id) as TaskAttemptRow | undefined;
+      if (!task || !claim || !attempt) {
+        throw new Error(`failed to force fail task: ${input.taskId}`);
+      }
+
+      const remainingAttempts = Math.max(0, task.maxAttempts - task.attemptCount);
+      const retryEligible = remainingAttempts > 0;
+
+      db.exec("COMMIT");
+      return {
+        task,
+        claim,
+        attempt: mapTaskAttemptRow(attempt),
+        retryEligible,
+        remainingAttempts,
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function requeueTask(input: TaskRequeueInput): TaskRequeueResult | null {
     const nowMs = Date.now();
     const nextAssignee = input.assignedAgentId?.trim() ? input.assignedAgentId.trim() : null;
@@ -2334,6 +2456,7 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     startAttempt,
     finishAttempt,
     failAttempt,
+    forceFailActiveTask,
     requeueTask,
     openQuestionThread,
     updateQuestionThread,

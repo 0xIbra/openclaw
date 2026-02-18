@@ -1,5 +1,12 @@
 import type { GatewayBrowserClient } from "../gateway.ts";
-import type { TaskDto, TaskPriority, TaskStatus, TaskType } from "../types.ts";
+import type {
+  TaskAttemptDto,
+  TaskDto,
+  TaskPriority,
+  TaskRuntimeStatusDto,
+  TaskStatus,
+  TaskType,
+} from "../types.ts";
 
 export type TasksState = {
   client: GatewayBrowserClient | null;
@@ -14,6 +21,8 @@ export type TasksState = {
   boardFilterPriority: "" | TaskPriority;
   boardFilterTag: string;
   boardFilterQuery: string;
+  boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]>;
+  boardRuntimeStatus: TaskRuntimeStatusDto | null;
 };
 
 export function normalizeBoardStatus(status: TaskStatus): Exclude<TaskStatus, "created"> {
@@ -107,6 +116,114 @@ export async function updateTask(
   return task ?? null;
 }
 
+export async function listTaskAttempts(
+  state: Pick<TasksState, "client" | "connected" | "boardTaskAttemptsByTaskId">,
+  input: { taskId: string; limit?: number },
+): Promise<TaskAttemptDto[]> {
+  if (!state.client || !state.connected) {
+    return [];
+  }
+  const response = await state.client.request<{ attempts?: TaskAttemptDto[] }>(
+    "tasks.attempts.list",
+    {
+      taskId: input.taskId,
+      limit: input.limit,
+    },
+  );
+  const attempts = Array.isArray(response.attempts) ? response.attempts : [];
+  state.boardTaskAttemptsByTaskId = {
+    ...state.boardTaskAttemptsByTaskId,
+    [input.taskId]: attempts,
+  };
+  return attempts;
+}
+
+export async function loadRuntimeStatus(
+  state: Pick<TasksState, "client" | "connected" | "boardRuntimeStatus">,
+) {
+  if (!state.client || !state.connected) {
+    state.boardRuntimeStatus = null;
+    return null;
+  }
+  const response = await state.client.request<TaskRuntimeStatusDto>("tasks.runtime.status", {});
+  state.boardRuntimeStatus = response;
+  return response;
+}
+
+export async function pauseRuntimeAgent(state: TasksState, agentId: string) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{
+    worker: TaskRuntimeStatusDto["workers"][number] | null;
+  }>("tasks.runtime.pauseAgent", { agentId });
+  if (response.worker) {
+    patchWorkerStatus(state, response.worker);
+  }
+  return response.worker;
+}
+
+export async function resumeRuntimeAgent(state: TasksState, agentId: string) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{
+    worker: TaskRuntimeStatusDto["workers"][number] | null;
+  }>("tasks.runtime.resumeAgent", { agentId });
+  if (response.worker) {
+    patchWorkerStatus(state, response.worker);
+  }
+  return response.worker;
+}
+
+export async function restartRuntimeAgent(state: TasksState, agentId: string) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{
+    worker: TaskRuntimeStatusDto["workers"][number] | null;
+  }>("tasks.runtime.restartAgent", { agentId });
+  if (response.worker) {
+    patchWorkerStatus(state, response.worker);
+  }
+  return response.worker;
+}
+
+export async function requeueTask(
+  state: TasksState,
+  input: { taskId: string; assignedAgentId?: string | null },
+) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{ task?: TaskDto }>("tasks.requeue", input);
+  if (response.task) {
+    patchTaskInList(state, response.task);
+  }
+  return response.task ?? null;
+}
+
+export async function forceFailActiveTask(
+  state: TasksState,
+  input: { taskId: string; reason: string; actor: string },
+) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{
+    task: TaskDto;
+    attempt: TaskAttemptDto;
+    retryEligible: boolean;
+    remainingAttempts: number;
+  }>("tasks.forceFailActive", input);
+  patchTaskInList(state, response.task);
+  patchTaskAttemptFromEvent(state, {
+    taskId: response.task.id,
+    attempt: response.attempt,
+  });
+  return response;
+}
+
 export async function transitionTaskOptimistic(
   state: TasksState,
   input: { id: string; toStatus: TaskStatus; assignedAgentId?: string },
@@ -167,6 +284,33 @@ export function patchTaskFromEvent(state: Pick<TasksState, "boardTasks">, payloa
   patchTaskInList(state, task);
 }
 
+export function patchTaskAttemptFromEvent(
+  state: Pick<TasksState, "boardTaskAttemptsByTaskId">,
+  payload: unknown,
+) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const taskId = (payload as { taskId?: string }).taskId;
+  const attempt = (payload as { attempt?: TaskAttemptDto }).attempt;
+  if (!taskId || !attempt || attempt.taskId !== taskId) {
+    return;
+  }
+  const existing = state.boardTaskAttemptsByTaskId[taskId] ?? [];
+  const next = [...existing];
+  const index = next.findIndex((entry) => entry.id === attempt.id);
+  if (index >= 0) {
+    next[index] = attempt;
+  } else {
+    next.unshift(attempt);
+  }
+  next.sort((a, b) => b.startedAtMs - a.startedAtMs);
+  state.boardTaskAttemptsByTaskId = {
+    ...state.boardTaskAttemptsByTaskId,
+    [taskId]: next,
+  };
+}
+
 function patchTaskInList(state: Pick<TasksState, "boardTasks">, task: TaskDto) {
   const next = [...state.boardTasks];
   const index = next.findIndex((entry) => entry.id === task.id);
@@ -176,4 +320,26 @@ function patchTaskInList(state: Pick<TasksState, "boardTasks">, task: TaskDto) {
     next.unshift(task);
   }
   state.boardTasks = next;
+}
+
+function patchWorkerStatus(
+  state: Pick<TasksState, "boardRuntimeStatus">,
+  worker: TaskRuntimeStatusDto["workers"][number],
+) {
+  const runtime = state.boardRuntimeStatus;
+  if (!runtime) {
+    return;
+  }
+  const workers = [...runtime.workers];
+  const index = workers.findIndex((entry) => entry.agentId === worker.agentId);
+  if (index >= 0) {
+    workers[index] = worker;
+  } else {
+    workers.push(worker);
+  }
+  state.boardRuntimeStatus = {
+    ...runtime,
+    workers,
+    updatedAtMs: Date.now(),
+  };
 }

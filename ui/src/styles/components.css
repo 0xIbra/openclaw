@@ -2118,7 +2118,7 @@
 .board-toolbar {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
 }
 
 .board-field {
@@ -2134,6 +2134,13 @@
 
 .board-field--wide {
   grid-column: span 2;
+}
+
+.board-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  align-items: start;
 }
 
 .board-columns {
@@ -2255,4 +2262,212 @@
   margin-left: auto;
   font-size: 11px;
   color: var(--muted);
+}
+
+.task-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.board-runtime-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+.board-runtime-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.board-runtime-list {
+  display: grid;
+  gap: 10px;
+}
+
+.board-runtime-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: var(--card);
+}
+
+.board-runtime-section__title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.board-runtime-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+.board-runtime-row__name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.board-runtime-row__meta {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.board-runtime-row__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.board-runtime-row--escalation {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.board-drawer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  animation: rise 0.2s var(--ease-out) backwards;
+}
+
+.board-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.board-drawer__grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.board-drawer__section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.board-drawer__section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.board-drawer__kv {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.board-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.board-attempts {
+  display: grid;
+  gap: 8px;
+}
+
+.board-attempt {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.board-attempt__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.board-drawer__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.board-modal .board-modal__card {
+  width: min(680px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.board-modal__actions {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.board-modal .field textarea {
+  min-height: 120px;
+}
+
+@media (max-width: 1280px) {
+  .board-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .board-toolbar {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+
+  .board-field--wide {
+    grid-column: span 2;
+  }
+
+  .board-drawer__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .board-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .board-field--wide {
+    grid-column: auto;
+  }
+
+  .board-shell__header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .board-drawer__header {
+    flex-direction: column;
+  }
 }

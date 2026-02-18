@@ -27,8 +27,11 @@ import type {
   SessionsListResult,
   SkillStatusReport,
   StatusSummary,
+  TaskAttemptDto,
   TaskDto,
+  TaskEscalationDto,
   TaskPriority,
+  TaskRuntimeStatusDto,
   TaskType,
 } from "./types.ts";
 import {
@@ -289,6 +292,51 @@ export class OpenClawApp extends LitElement {
   @state() boardFilterPriority: "" | TaskPriority = "";
   @state() boardFilterTag = "";
   @state() boardFilterQuery = "";
+  @state() boardActiveModal: "createProject" | "createTask" | "editTask" | "confirmAction" | null =
+    null;
+  @state() boardProjectDraft: { name: string; description: string; repoRoot: string } = {
+    name: "",
+    description: "",
+    repoRoot: "",
+  };
+  @state() boardTaskDraft: {
+    id: string | null;
+    title: string;
+    description: string;
+    type: TaskType;
+    priority: TaskPriority;
+    assignedAgentId: string;
+    tags: string;
+  } = {
+    id: null,
+    title: "",
+    description: "",
+    type: "feature",
+    priority: "medium",
+    assignedAgentId: "",
+    tags: "",
+  };
+  @state() boardModalError: string | null = null;
+  @state() boardSelectedTaskId: string | null = null;
+  @state() boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]> = {};
+  @state() boardTaskAttemptsLoadingTaskId: string | null = null;
+  @state() boardRuntimeStatus: TaskRuntimeStatusDto | null = null;
+  @state() boardRuntimeLoading = false;
+  @state() boardRuntimeError: string | null = null;
+  @state() boardOperatorPendingKey: string | null = null;
+  @state() boardEscalations: TaskEscalationDto[] = [];
+  @state() boardConfirmAction: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone: "primary" | "danger";
+    action:
+      | { type: "pauseWorker"; agentId: string }
+      | { type: "resumeWorker"; agentId: string }
+      | { type: "restartWorker"; agentId: string }
+      | { type: "requeueTask"; taskId: string; assignedAgentId: string | null }
+      | { type: "forceFailTask"; taskId: string };
+  } | null = null;
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
@@ -333,6 +381,7 @@ export class OpenClawApp extends LitElement {
   private nodesPollInterval: number | null = null;
   private logsPollInterval: number | null = null;
   private debugPollInterval: number | null = null;
+  boardRuntimePollInterval: number | null = null;
   private logsScrollFrame: number | null = null;
   private toolStreamById = new Map<string, ToolStreamEntry>();
   private toolStreamOrder: string[] = [];

@@ -21,6 +21,7 @@ import type {
   TaskAttemptStartInput,
   TaskAttemptStartResult,
   TaskAttemptUpdateInput,
+  TaskForceFailActiveInput,
   TaskClaimLeaseInput,
   TaskClaimLeaseResult,
   TaskClaimNextInput,
@@ -723,6 +724,22 @@ export class TaskService {
     });
     if (!result) {
       throw new TaskServiceError("conflict", "attempt fail preconditions failed");
+    }
+    return result;
+  }
+
+  forceFailActiveTask(input: TaskForceFailActiveInput): TaskAttemptFailResult {
+    const result = this.store.forceFailActiveTask({
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      reason: requireNonEmpty(input.reason, "reason"),
+      actor: requireNonEmpty(input.actor, "actor"),
+      nowMs: this.now(),
+    });
+    if (!result) {
+      throw new TaskServiceError(
+        "conflict",
+        `task does not have an active running attempt: ${input.taskId}`,
+      );
     }
     return result;
   }

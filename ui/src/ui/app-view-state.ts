@@ -30,8 +30,11 @@ import type {
   SessionsListResult,
   SkillStatusReport,
   StatusSummary,
+  TaskAttemptDto,
   TaskDto,
+  TaskEscalationDto,
   TaskPriority,
+  TaskRuntimeStatusDto,
   TaskType,
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
@@ -198,6 +201,38 @@ export type AppViewState = {
   boardFilterPriority: "" | TaskPriority;
   boardFilterTag: string;
   boardFilterQuery: string;
+  boardActiveModal: "createProject" | "createTask" | "editTask" | "confirmAction" | null;
+  boardProjectDraft: { name: string; description: string; repoRoot: string };
+  boardTaskDraft: {
+    id: string | null;
+    title: string;
+    description: string;
+    type: TaskType;
+    priority: TaskPriority;
+    assignedAgentId: string;
+    tags: string;
+  };
+  boardModalError: string | null;
+  boardSelectedTaskId: string | null;
+  boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]>;
+  boardTaskAttemptsLoadingTaskId: string | null;
+  boardRuntimeStatus: TaskRuntimeStatusDto | null;
+  boardRuntimeLoading: boolean;
+  boardRuntimeError: string | null;
+  boardOperatorPendingKey: string | null;
+  boardEscalations: TaskEscalationDto[];
+  boardConfirmAction: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone: "primary" | "danger";
+    action:
+      | { type: "pauseWorker"; agentId: string }
+      | { type: "resumeWorker"; agentId: string }
+      | { type: "restartWorker"; agentId: string }
+      | { type: "requeueTask"; taskId: string; assignedAgentId: string | null }
+      | { type: "forceFailTask"; taskId: string };
+  } | null;
   skillsLoading: boolean;
   skillsReport: SkillStatusReport | null;
   skillsError: string | null;

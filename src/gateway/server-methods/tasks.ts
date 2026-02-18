@@ -3,14 +3,18 @@ import { TaskServiceError } from "../../tasks/service.js";
 import {
   ErrorCodes,
   errorShape,
+  validateTasksAttemptsListParams,
   validateTasksAttemptFailParams,
   validateTasksAttemptFinishParams,
   validateTasksAttemptStartParams,
   validateTasksClaimNextParams,
   validateTasksCreateParams,
+  validateTasksForceFailActiveParams,
   validateTasksGetParams,
   validateTasksLeaseHeartbeatParams,
   validateTasksListParams,
+  validateTasksRuntimeAgentControlParams,
+  validateTasksRuntimeStatusParams,
   validateTasksRequeueParams,
   validateTasksTransitionParams,
   validateTasksUpdateParams,
@@ -189,5 +193,145 @@ export const tasksHandlers: GatewayRequestHandlers = {
     } catch (err) {
       respond(false, undefined, toGatewayTaskError(err));
     }
+  },
+  "tasks.attempts.list": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateTasksAttemptsListParams, "tasks.attempts.list", respond)
+    ) {
+      return;
+    }
+    try {
+      const p = params as { taskId: string; limit?: number };
+      const attempts = context.taskService.listTaskAttempts(p.taskId, p.limit ?? 50);
+      respond(true, { attempts }, undefined);
+    } catch (err) {
+      respond(false, undefined, toGatewayTaskError(err));
+    }
+  },
+  "tasks.forceFailActive": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateTasksForceFailActiveParams,
+        "tasks.forceFailActive",
+        respond,
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = context.taskService.forceFailActiveTask(
+        params as { taskId: string; reason: string; actor: string },
+      );
+      context.broadcast("tasks.changed", { reason: "transitioned", task: result.task });
+      context.broadcast("tasks.attempt.changed", {
+        taskId: result.task.id,
+        attempt: result.attempt,
+        reason: "failed",
+      });
+      respond(true, result, undefined);
+    } catch (err) {
+      respond(false, undefined, toGatewayTaskError(err));
+    }
+  },
+  "tasks.runtime.status": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateTasksRuntimeStatusParams, "tasks.runtime.status", respond)
+    ) {
+      return;
+    }
+    const workers = context.taskRuntimeSupervisor?.getWorkerStatuses() ?? [];
+    const leads = context.taskLeadSupervisor?.getLeadStatuses() ?? [];
+    const teams = context.taskService.listTeams({ includeArchived: false }).map((team) => ({
+      teamId: team.id,
+      teamName: team.name,
+      leadAgentId: team.leadAgentId,
+      memberAgentIds: context.taskService
+        .listTeamMembers(team.id)
+        .map((member) => member.agentId)
+        .filter(Boolean),
+    }));
+    respond(
+      true,
+      {
+        workers,
+        leads,
+        teams,
+        updatedAtMs: Date.now(),
+      },
+      undefined,
+    );
+  },
+  "tasks.runtime.pauseAgent": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateTasksRuntimeAgentControlParams,
+        "tasks.runtime.pauseAgent",
+        respond,
+      )
+    ) {
+      return;
+    }
+    if (!context.taskRuntimeSupervisor) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "task runtime supervisor is unavailable"),
+      );
+      return;
+    }
+    const worker = await context.taskRuntimeSupervisor.pauseAgent(
+      (params as { agentId: string }).agentId,
+    );
+    respond(true, { worker }, undefined);
+  },
+  "tasks.runtime.resumeAgent": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateTasksRuntimeAgentControlParams,
+        "tasks.runtime.resumeAgent",
+        respond,
+      )
+    ) {
+      return;
+    }
+    if (!context.taskRuntimeSupervisor) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "task runtime supervisor is unavailable"),
+      );
+      return;
+    }
+    const worker = await context.taskRuntimeSupervisor.resumeAgent(
+      (params as { agentId: string }).agentId,
+    );
+    respond(true, { worker }, undefined);
+  },
+  "tasks.runtime.restartAgent": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateTasksRuntimeAgentControlParams,
+        "tasks.runtime.restartAgent",
+        respond,
+      )
+    ) {
+      return;
+    }
+    if (!context.taskRuntimeSupervisor) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "task runtime supervisor is unavailable"),
+      );
+      return;
+    }
+    const worker = await context.taskRuntimeSupervisor.restartAgent(
+      (params as { agentId: string }).agentId,
+    );
+    respond(true, { worker }, undefined);
   },
 };

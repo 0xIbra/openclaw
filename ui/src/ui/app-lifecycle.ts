@@ -1,8 +1,10 @@
 import type { Tab } from "./navigation.ts";
 import { connectGateway } from "./app-gateway.ts";
 import {
+  startBoardRuntimePolling,
   startLogsPolling,
   startNodesPolling,
+  stopBoardRuntimePolling,
   stopLogsPolling,
   stopNodesPolling,
   startDebugPolling,
@@ -54,6 +56,9 @@ export function handleConnected(host: LifecycleHost) {
   if (host.tab === "debug") {
     startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
   }
+  if (host.tab === "board") {
+    startBoardRuntimePolling(host as unknown as Parameters<typeof startBoardRuntimePolling>[0]);
+  }
 }
 
 export function handleFirstUpdated(host: LifecycleHost) {
@@ -65,6 +70,7 @@ export function handleDisconnected(host: LifecycleHost) {
   stopNodesPolling(host as unknown as Parameters<typeof stopNodesPolling>[0]);
   stopLogsPolling(host as unknown as Parameters<typeof stopLogsPolling>[0]);
   stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  stopBoardRuntimePolling(host as unknown as Parameters<typeof stopBoardRuntimePolling>[0]);
   detachThemeListener(host as unknown as Parameters<typeof detachThemeListener>[0]);
   host.topbarObserver?.disconnect();
   host.topbarObserver = null;

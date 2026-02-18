@@ -2,7 +2,9 @@ import type { OpenClawApp } from "./app.ts";
 import type { AgentsListResult } from "./types.ts";
 import { refreshChat } from "./app-chat.ts";
 import {
+  startBoardRuntimePolling,
   startLogsPolling,
+  stopBoardRuntimePolling,
   stopLogsPolling,
   startDebugPolling,
   stopDebugPolling,
@@ -23,7 +25,7 @@ import { loadPresence } from "./controllers/presence.ts";
 import { loadProjects } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
-import { loadTasks } from "./controllers/tasks.ts";
+import { loadRuntimeStatus, loadTasks } from "./controllers/tasks.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -162,6 +164,11 @@ export function setTab(host: SettingsHost, next: Tab) {
   } else {
     stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
   }
+  if (next === "board") {
+    startBoardRuntimePolling(host as unknown as Parameters<typeof startBoardRuntimePolling>[0]);
+  } else {
+    stopBoardRuntimePolling(host as unknown as Parameters<typeof stopBoardRuntimePolling>[0]);
+  }
   void refreshActiveTab(host);
   syncUrlWithTab(host, next, false);
 }
@@ -199,6 +206,7 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "board") {
     await loadProjects(host as unknown as Parameters<typeof loadProjects>[0]);
     await loadTasks(host as unknown as Parameters<typeof loadTasks>[0]);
+    await loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined);
   }
   if (host.tab === "skills") {
     await loadSkills(host as unknown as OpenClawApp);
