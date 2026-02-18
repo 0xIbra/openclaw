@@ -3,10 +3,21 @@ import type {
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
+  ProjectRepoRecord,
+  ProjectRepoUpsertInput,
   ProjectUpdateInput,
+  TaskAttemptCreateInput,
+  TaskAttemptRecord,
+  TaskAttemptUpdateInput,
+  TaskClaimCreateInput,
+  TaskClaimRecord,
   TaskCreateInput,
   TaskListFilters,
   TaskRecord,
+  TeamListFilters,
+  TeamMemberRecord,
+  TeamMemberUpsertInput,
+  TeamRecord,
 } from "./types.js";
 import { initializeTaskSchema, openTaskDatabase, type TaskDatabase } from "./sqlite.js";
 
@@ -15,6 +26,7 @@ type ProjectRow = {
   name: string;
   description: string | null;
   repo_root: string | null;
+  primary_team_id: string | null;
   created_at_ms: number;
   updated_at_ms: number;
   archived_at_ms: number | null;
@@ -31,6 +43,8 @@ type TaskRow = {
   status: TaskRecord["status"];
   parent_task_id: string | null;
   assigned_agent_id: string | null;
+  team_id: string | null;
+  current_attempt_id: string | null;
   max_attempts: number;
   attempt_count: number;
   relevant_paths_json: string;
@@ -42,6 +56,73 @@ type TaskRow = {
   completed_at_ms: number | null;
 };
 
+type TeamRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  lead_agent_id: string | null;
+  settings_json: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+  archived_at_ms: number | null;
+};
+
+type TeamMemberRow = {
+  team_id: string;
+  agent_id: string;
+  role: TeamMemberRecord["role"];
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+type ProjectRepoRow = {
+  id: string;
+  project_id: string;
+  repo_key: string;
+  role: string;
+  repo_root: string;
+  is_primary: number;
+  branch_prefix: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+type TaskClaimRow = {
+  id: string;
+  task_id: string;
+  agent_id: string;
+  team_id: string | null;
+  lease_token: string;
+  state: TaskClaimRecord["state"];
+  leased_at_ms: number;
+  heartbeat_at_ms: number;
+  lease_expires_at_ms: number;
+  released_at_ms: number | null;
+};
+
+type TaskAttemptRow = {
+  id: string;
+  task_id: string;
+  status: string;
+  started_at_ms: number;
+  ended_at_ms: number | null;
+  agent_id: string | null;
+  notes: string | null;
+  attempt_number: number | null;
+  claim_id: string | null;
+  team_id: string | null;
+  session_backend: string | null;
+  session_id: string | null;
+  summary: string | null;
+  error_text: string | null;
+  command_outcome_json: string;
+  test_outcome_json: string;
+  changed_files_json: string;
+  metrics_json: string;
+  created_at_ms: number | null;
+  updated_at_ms: number | null;
+};
+
 type TaskRowPatch = Partial<{
   title: string;
   description: string;
@@ -50,6 +131,8 @@ type TaskRowPatch = Partial<{
   complexity: TaskRecord["complexity"];
   parent_task_id: string | null;
   assigned_agent_id: string | null;
+  team_id: string | null;
+  current_attempt_id: string | null;
   max_attempts: number;
   attempt_count: number;
   relevant_paths_json: string;
@@ -69,6 +152,18 @@ function asStringArray(raw: string): string[] {
     return parsed.map((value) => (typeof value === "string" ? value.trim() : "")).filter(Boolean);
   } catch {
     return [];
+  }
+}
+
+function asRecord(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 
@@ -107,6 +202,8 @@ function mapTaskRow(params: {
     dependsOnTaskIds: params.dependsOnTaskIds,
     blockedByTaskIds: params.blockedByTaskIds,
     assignedAgentId: row.assigned_agent_id ?? null,
+    teamId: row.team_id ?? null,
+    currentAttemptId: row.current_attempt_id ?? null,
     maxAttempts: Number(row.max_attempts),
     attemptCount: Number(row.attempt_count),
     relevantPaths: asStringArray(row.relevant_paths_json),
@@ -117,6 +214,87 @@ function mapTaskRow(params: {
     startedAtMs: row.started_at_ms == null ? null : Number(row.started_at_ms),
     completedAtMs: row.completed_at_ms == null ? null : Number(row.completed_at_ms),
   };
+}
+
+function mapTeamRow(row: TeamRow): TeamRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    leadAgentId: row.lead_agent_id ?? null,
+    settings: asRecord(row.settings_json),
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+    archivedAtMs: row.archived_at_ms == null ? null : Number(row.archived_at_ms),
+  };
+}
+
+function mapTeamMemberRow(row: TeamMemberRow): TeamMemberRecord {
+  return {
+    teamId: row.team_id,
+    agentId: row.agent_id,
+    role: row.role,
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+  };
+}
+
+function mapProjectRepoRow(row: ProjectRepoRow): ProjectRepoRecord {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    repoKey: row.repo_key,
+    role: row.role,
+    repoRoot: row.repo_root,
+    isPrimary: Number(row.is_primary) === 1,
+    branchPrefix: row.branch_prefix ?? null,
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+  };
+}
+
+function mapTaskClaimRow(row: TaskClaimRow): TaskClaimRecord {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    agentId: row.agent_id,
+    teamId: row.team_id ?? null,
+    leaseToken: row.lease_token,
+    state: row.state,
+    leasedAtMs: Number(row.leased_at_ms),
+    heartbeatAtMs: Number(row.heartbeat_at_ms),
+    leaseExpiresAtMs: Number(row.lease_expires_at_ms),
+    releasedAtMs: row.released_at_ms == null ? null : Number(row.released_at_ms),
+  };
+}
+
+function mapTaskAttemptRow(row: TaskAttemptRow): TaskAttemptRecord {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    status: row.status,
+    startedAtMs: Number(row.started_at_ms),
+    endedAtMs: row.ended_at_ms == null ? null : Number(row.ended_at_ms),
+    agentId: row.agent_id ?? null,
+    notes: row.notes ?? null,
+    attemptNumber: row.attempt_number == null ? null : Number(row.attempt_number),
+    claimId: row.claim_id ?? null,
+    teamId: row.team_id ?? null,
+    sessionBackend: row.session_backend ?? null,
+    sessionId: row.session_id ?? null,
+    summary: row.summary ?? null,
+    errorText: row.error_text ?? null,
+    commandOutcome: asRecord(row.command_outcome_json),
+    testOutcome: asRecord(row.test_outcome_json),
+    changedFiles: asStringArray(row.changed_files_json),
+    metrics: asRecord(row.metrics_json),
+    createdAtMs: row.created_at_ms == null ? null : Number(row.created_at_ms),
+    updatedAtMs: row.updated_at_ms == null ? null : Number(row.updated_at_ms),
+  };
+}
+
+function normalizeJsonRecord(value: Record<string, unknown> | undefined): string {
+  return JSON.stringify(value ?? {});
 }
 
 export type TaskStore = ReturnType<typeof createTaskStore>;
@@ -158,6 +336,113 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     return row ? mapProjectRow(row) : null;
   }
 
+  function getPrimaryProjectRepo(projectId: string): ProjectRepoRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM project_repos
+         WHERE project_id = ? AND is_primary = 1
+         ORDER BY updated_at_ms DESC
+         LIMIT 1`,
+      )
+      .get(projectId) as ProjectRepoRow | undefined;
+    if (!row) {
+      return null;
+    }
+    return mapProjectRepoRow(row);
+  }
+
+  function listProjectRepos(projectId: string): ProjectRepoRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM project_repos
+         WHERE project_id = ?
+         ORDER BY is_primary DESC, updated_at_ms DESC`,
+      )
+      .all(projectId) as ProjectRepoRow[];
+    return rows.map(mapProjectRepoRow);
+  }
+
+  function syncProjectPrimaryRepoFromRepoRoot(
+    projectId: string,
+    repoRoot: string | null | undefined,
+    nowMs: number,
+  ): void {
+    const normalizedRoot = repoRoot?.trim() ? repoRoot.trim() : null;
+
+    db.exec("BEGIN");
+    try {
+      db.prepare(
+        `UPDATE project_repos SET is_primary = 0, updated_at_ms = ? WHERE project_id = ?`,
+      ).run(nowMs, projectId);
+
+      if (!normalizedRoot) {
+        db.exec("COMMIT");
+        return;
+      }
+
+      const byRoot = db
+        .prepare(
+          `SELECT *
+           FROM project_repos
+           WHERE project_id = ? AND repo_root = ?
+           LIMIT 1`,
+        )
+        .get(projectId, normalizedRoot) as ProjectRepoRow | undefined;
+      if (byRoot) {
+        db.prepare(
+          `UPDATE project_repos
+           SET is_primary = 1,
+               role = 'primary',
+               updated_at_ms = ?
+           WHERE id = ?`,
+        ).run(nowMs, byRoot.id);
+        db.exec("COMMIT");
+        return;
+      }
+
+      const defaultRepo = db
+        .prepare(
+          `SELECT *
+           FROM project_repos
+           WHERE project_id = ? AND repo_key = 'default'
+           LIMIT 1`,
+        )
+        .get(projectId) as ProjectRepoRow | undefined;
+
+      if (defaultRepo) {
+        db.prepare(
+          `UPDATE project_repos
+           SET role = 'primary',
+               repo_root = ?,
+               is_primary = 1,
+               updated_at_ms = ?
+           WHERE id = ?`,
+        ).run(normalizedRoot, nowMs, defaultRepo.id);
+      } else {
+        db.prepare(
+          `INSERT INTO project_repos (
+            id,
+            project_id,
+            repo_key,
+            role,
+            repo_root,
+            is_primary,
+            branch_prefix,
+            created_at_ms,
+            updated_at_ms
+          ) VALUES (?, ?, 'default', 'primary', ?, 1, NULL, ?, ?)`,
+        ).run(randomUUID(), projectId, normalizedRoot, nowMs, nowMs);
+      }
+
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function createProject(input: ProjectCreateInput, nowMs: number): ProjectRecord {
     const id = randomUUID();
     db.prepare(
@@ -171,6 +456,11 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
         archived_at_ms
       ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
     ).run(id, input.name, input.description ?? null, input.repoRoot ?? null, nowMs, nowMs);
+
+    if (input.repoRoot !== undefined) {
+      syncProjectPrimaryRepoFromRepoRoot(id, input.repoRoot ?? null, nowMs);
+    }
+
     return getProject(id) as ProjectRecord;
   }
 
@@ -197,6 +487,11 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     db.prepare(`UPDATE projects SET ${sets.join(", ")} WHERE id = ?`).run(
       ...(values as Array<string | number | null>),
     );
+
+    if (input.repoRoot !== undefined) {
+      syncProjectPrimaryRepoFromRepoRoot(input.id, input.repoRoot ?? null, nowMs);
+    }
+
     return getProject(input.id);
   }
 
@@ -221,6 +516,249 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
       | { id: string }
       | undefined;
     return Boolean(row?.id);
+  }
+
+  function getActiveTeamByName(name: string): TeamRecord | null {
+    const row = db
+      .prepare(
+        `SELECT * FROM teams WHERE lower(name) = lower(?) AND archived_at_ms IS NULL LIMIT 1`,
+      )
+      .get(name) as TeamRow | undefined;
+    return row ? mapTeamRow(row) : null;
+  }
+
+  function listTeams(filters?: TeamListFilters): TeamRecord[] {
+    const includeArchived = filters?.includeArchived === true;
+    const rows = db
+      .prepare(
+        includeArchived
+          ? `SELECT * FROM teams ORDER BY updated_at_ms DESC`
+          : `SELECT * FROM teams WHERE archived_at_ms IS NULL ORDER BY updated_at_ms DESC`,
+      )
+      .all() as TeamRow[];
+    return rows.map(mapTeamRow);
+  }
+
+  function getTeam(id: string): TeamRecord | null {
+    const row = db.prepare(`SELECT * FROM teams WHERE id = ? LIMIT 1`).get(id) as
+      | TeamRow
+      | undefined;
+    return row ? mapTeamRow(row) : null;
+  }
+
+  function createTeam(
+    input: {
+      name: string;
+      description?: string;
+      leadAgentId?: string;
+      settings?: Record<string, unknown>;
+    },
+    nowMs: number,
+  ): TeamRecord {
+    const id = randomUUID();
+    db.prepare(
+      `INSERT INTO teams (
+        id,
+        name,
+        description,
+        lead_agent_id,
+        settings_json,
+        created_at_ms,
+        updated_at_ms,
+        archived_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+    ).run(
+      id,
+      input.name,
+      input.description ?? null,
+      input.leadAgentId ?? null,
+      normalizeJsonRecord(input.settings),
+      nowMs,
+      nowMs,
+    );
+    return getTeam(id) as TeamRecord;
+  }
+
+  function updateTeam(
+    input: {
+      id: string;
+      name?: string;
+      description?: string;
+      leadAgentId?: string | null;
+      settings?: Record<string, unknown>;
+    },
+    nowMs: number,
+  ): TeamRecord | null {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    if (input.name !== undefined) {
+      sets.push("name = ?");
+      values.push(input.name);
+    }
+    if (input.description !== undefined) {
+      sets.push("description = ?");
+      values.push(input.description || null);
+    }
+    if (input.leadAgentId !== undefined) {
+      sets.push("lead_agent_id = ?");
+      values.push(input.leadAgentId || null);
+    }
+    if (input.settings !== undefined) {
+      sets.push("settings_json = ?");
+      values.push(normalizeJsonRecord(input.settings));
+    }
+    if (sets.length === 0) {
+      return getTeam(input.id);
+    }
+    sets.push("updated_at_ms = ?");
+    values.push(nowMs, input.id);
+
+    db.prepare(`UPDATE teams SET ${sets.join(", ")} WHERE id = ?`).run(
+      ...(values as Array<string | number | null>),
+    );
+    return getTeam(input.id);
+  }
+
+  function archiveTeam(id: string, nowMs: number): TeamRecord | null {
+    db.prepare(`UPDATE teams SET archived_at_ms = ?, updated_at_ms = ? WHERE id = ?`).run(
+      nowMs,
+      nowMs,
+      id,
+    );
+    return getTeam(id);
+  }
+
+  function listTeamMembers(teamId: string): TeamMemberRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM team_members
+         WHERE team_id = ?
+         ORDER BY CASE role WHEN 'lead' THEN 0 ELSE 1 END, updated_at_ms DESC`,
+      )
+      .all(teamId) as TeamMemberRow[];
+    return rows.map(mapTeamMemberRow);
+  }
+
+  function upsertTeamMember(input: TeamMemberUpsertInput, nowMs: number): TeamMemberRecord {
+    db.prepare(
+      `INSERT INTO team_members (
+        team_id,
+        agent_id,
+        role,
+        created_at_ms,
+        updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(team_id, agent_id)
+      DO UPDATE SET role = excluded.role, updated_at_ms = excluded.updated_at_ms`,
+    ).run(input.teamId, input.agentId, input.role, nowMs, nowMs);
+
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM team_members
+         WHERE team_id = ? AND agent_id = ?
+         LIMIT 1`,
+      )
+      .get(input.teamId, input.agentId) as TeamMemberRow;
+    return mapTeamMemberRow(row);
+  }
+
+  function removeTeamMember(teamId: string, agentId: string): boolean {
+    const result = db
+      .prepare(`DELETE FROM team_members WHERE team_id = ? AND agent_id = ?`)
+      .run(teamId, agentId) as { changes?: number };
+    return Number(result.changes ?? 0) > 0;
+  }
+
+  function upsertProjectRepo(input: ProjectRepoUpsertInput, nowMs: number): ProjectRepoRecord {
+    const current = input.id
+      ? (db.prepare(`SELECT * FROM project_repos WHERE id = ? LIMIT 1`).get(input.id) as
+          | ProjectRepoRow
+          | undefined)
+      : (db
+          .prepare(`SELECT * FROM project_repos WHERE project_id = ? AND repo_key = ? LIMIT 1`)
+          .get(input.projectId, input.repoKey) as ProjectRepoRow | undefined);
+
+    const nextIsPrimary =
+      input.isPrimary === undefined ? Number(current?.is_primary ?? 0) === 1 : input.isPrimary;
+
+    const repoId = current?.id ?? input.id ?? randomUUID();
+
+    db.exec("BEGIN");
+    try {
+      if (nextIsPrimary) {
+        db.prepare(
+          `UPDATE project_repos SET is_primary = 0, updated_at_ms = ? WHERE project_id = ?`,
+        ).run(nowMs, input.projectId);
+      }
+
+      if (current) {
+        db.prepare(
+          `UPDATE project_repos
+           SET repo_key = ?,
+               role = ?,
+               repo_root = ?,
+               is_primary = ?,
+               branch_prefix = ?,
+               updated_at_ms = ?
+           WHERE id = ?`,
+        ).run(
+          input.repoKey,
+          input.role,
+          input.repoRoot,
+          nextIsPrimary ? 1 : 0,
+          input.branchPrefix ?? null,
+          nowMs,
+          repoId,
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO project_repos (
+            id,
+            project_id,
+            repo_key,
+            role,
+            repo_root,
+            is_primary,
+            branch_prefix,
+            created_at_ms,
+            updated_at_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          repoId,
+          input.projectId,
+          input.repoKey,
+          input.role,
+          input.repoRoot,
+          nextIsPrimary ? 1 : 0,
+          input.branchPrefix ?? null,
+          nowMs,
+          nowMs,
+        );
+      }
+
+      if (nextIsPrimary) {
+        db.prepare(`UPDATE projects SET repo_root = ?, updated_at_ms = ? WHERE id = ?`).run(
+          input.repoRoot,
+          nowMs,
+          input.projectId,
+        );
+      }
+
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    const row = db.prepare(`SELECT * FROM project_repos WHERE id = ? LIMIT 1`).get(repoId) as
+      | ProjectRepoRow
+      | undefined;
+    if (!row) {
+      throw new Error(`failed to upsert project repo: ${repoId}`);
+    }
+    return mapProjectRepoRow(row);
   }
 
   function listTaskRows(filters?: TaskListFilters): TaskRow[] {
@@ -378,6 +916,8 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
         status,
         parent_task_id,
         assigned_agent_id,
+        team_id,
+        current_attempt_id,
         max_attempts,
         attempt_count,
         relevant_paths_json,
@@ -387,7 +927,7 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
         updated_at_ms,
         started_at_ms,
         completed_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.projectId,
@@ -399,6 +939,8 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
       input.status ?? "created",
       input.parentTaskId ?? null,
       input.assignedAgentId ?? null,
+      null,
+      null,
       input.maxAttempts ?? 3,
       0,
       JSON.stringify(input.relevantPaths ?? []),
@@ -454,6 +996,255 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     return Number(row?.count ?? 0);
   }
 
+  function createTaskAttempt(input: TaskAttemptCreateInput, nowMs: number): TaskAttemptRecord {
+    const id = randomUUID();
+    const startedAtMs = input.startedAtMs ?? nowMs;
+    db.prepare(
+      `INSERT INTO task_attempts (
+        id,
+        task_id,
+        status,
+        started_at_ms,
+        ended_at_ms,
+        agent_id,
+        notes,
+        attempt_number,
+        claim_id,
+        team_id,
+        session_backend,
+        session_id,
+        summary,
+        error_text,
+        command_outcome_json,
+        test_outcome_json,
+        changed_files_json,
+        metrics_json,
+        created_at_ms,
+        updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      input.taskId,
+      input.status,
+      startedAtMs,
+      input.endedAtMs ?? null,
+      input.agentId ?? null,
+      input.notes ?? null,
+      input.attemptNumber ?? null,
+      input.claimId ?? null,
+      input.teamId ?? null,
+      input.sessionBackend ?? null,
+      input.sessionId ?? null,
+      input.summary ?? null,
+      input.errorText ?? null,
+      normalizeJsonRecord(input.commandOutcome),
+      normalizeJsonRecord(input.testOutcome),
+      JSON.stringify(input.changedFiles ?? []),
+      normalizeJsonRecord(input.metrics),
+      nowMs,
+      nowMs,
+    );
+
+    db.prepare(`UPDATE tasks SET current_attempt_id = ?, updated_at_ms = ? WHERE id = ?`).run(
+      id,
+      nowMs,
+      input.taskId,
+    );
+
+    const row = db.prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`).get(id) as
+      | TaskAttemptRow
+      | undefined;
+    if (!row) {
+      throw new Error(`failed to create task attempt: ${id}`);
+    }
+    return mapTaskAttemptRow(row);
+  }
+
+  function updateTaskAttempt(
+    input: TaskAttemptUpdateInput,
+    nowMs: number,
+  ): TaskAttemptRecord | null {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+
+    if (input.status !== undefined) {
+      sets.push("status = ?");
+      values.push(input.status);
+    }
+    if (input.endedAtMs !== undefined) {
+      sets.push("ended_at_ms = ?");
+      values.push(input.endedAtMs ?? null);
+    }
+    if (input.notes !== undefined) {
+      sets.push("notes = ?");
+      values.push(input.notes ?? null);
+    }
+    if (input.summary !== undefined) {
+      sets.push("summary = ?");
+      values.push(input.summary ?? null);
+    }
+    if (input.errorText !== undefined) {
+      sets.push("error_text = ?");
+      values.push(input.errorText ?? null);
+    }
+    if (input.commandOutcome !== undefined) {
+      sets.push("command_outcome_json = ?");
+      values.push(normalizeJsonRecord(input.commandOutcome));
+    }
+    if (input.testOutcome !== undefined) {
+      sets.push("test_outcome_json = ?");
+      values.push(normalizeJsonRecord(input.testOutcome));
+    }
+    if (input.changedFiles !== undefined) {
+      sets.push("changed_files_json = ?");
+      values.push(JSON.stringify(input.changedFiles));
+    }
+    if (input.metrics !== undefined) {
+      sets.push("metrics_json = ?");
+      values.push(normalizeJsonRecord(input.metrics));
+    }
+    if (input.sessionBackend !== undefined) {
+      sets.push("session_backend = ?");
+      values.push(input.sessionBackend ?? null);
+    }
+    if (input.sessionId !== undefined) {
+      sets.push("session_id = ?");
+      values.push(input.sessionId ?? null);
+    }
+
+    if (sets.length === 0) {
+      const row = db.prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`).get(input.id) as
+        | TaskAttemptRow
+        | undefined;
+      return row ? mapTaskAttemptRow(row) : null;
+    }
+
+    sets.push("updated_at_ms = ?");
+    values.push(nowMs, input.id);
+
+    db.prepare(`UPDATE task_attempts SET ${sets.join(", ")} WHERE id = ?`).run(
+      ...(values as Array<string | number | null>),
+    );
+
+    const row = db.prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`).get(input.id) as
+      | TaskAttemptRow
+      | undefined;
+    return row ? mapTaskAttemptRow(row) : null;
+  }
+
+  function listTaskAttempts(taskId: string, limit = 50): TaskAttemptRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM task_attempts
+         WHERE task_id = ?
+         ORDER BY started_at_ms DESC
+         LIMIT ?`,
+      )
+      .all(taskId, Math.max(1, Math.min(500, limit))) as TaskAttemptRow[];
+    return rows.map(mapTaskAttemptRow);
+  }
+
+  function createTaskClaim(input: TaskClaimCreateInput): TaskClaimRecord {
+    const id = randomUUID();
+    const nowMs = input.nowMs ?? Date.now();
+    const expiresAtMs = nowMs + Math.max(1, input.leaseDurationMs);
+
+    db.prepare(
+      `INSERT INTO task_claims (
+        id,
+        task_id,
+        agent_id,
+        team_id,
+        lease_token,
+        state,
+        leased_at_ms,
+        heartbeat_at_ms,
+        lease_expires_at_ms,
+        released_at_ms
+      ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)`,
+    ).run(
+      id,
+      input.taskId,
+      input.agentId,
+      input.teamId ?? null,
+      input.leaseToken,
+      nowMs,
+      nowMs,
+      expiresAtMs,
+    );
+
+    const row = db.prepare(`SELECT * FROM task_claims WHERE id = ? LIMIT 1`).get(id) as
+      | TaskClaimRow
+      | undefined;
+    if (!row) {
+      throw new Error(`failed to create task claim: ${id}`);
+    }
+    return mapTaskClaimRow(row);
+  }
+
+  function getTaskClaim(id: string): TaskClaimRecord | null {
+    const row = db.prepare(`SELECT * FROM task_claims WHERE id = ? LIMIT 1`).get(id) as
+      | TaskClaimRow
+      | undefined;
+    return row ? mapTaskClaimRow(row) : null;
+  }
+
+  function getActiveTaskClaimByTaskId(taskId: string): TaskClaimRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM task_claims
+         WHERE task_id = ? AND state = 'active'
+         LIMIT 1`,
+      )
+      .get(taskId) as TaskClaimRow | undefined;
+    return row ? mapTaskClaimRow(row) : null;
+  }
+
+  function heartbeatTaskClaim(
+    claimId: string,
+    leaseDurationMs: number,
+    nowMs: number,
+  ): TaskClaimRecord | null {
+    const expiresAtMs = nowMs + Math.max(1, leaseDurationMs);
+    db.prepare(
+      `UPDATE task_claims
+       SET heartbeat_at_ms = ?,
+           lease_expires_at_ms = ?
+       WHERE id = ? AND state = 'active'`,
+    ).run(nowMs, expiresAtMs, claimId);
+    return getTaskClaim(claimId);
+  }
+
+  function releaseTaskClaim(
+    claimId: string,
+    nowMs: number,
+    state: "released" | "expired" = "released",
+  ): TaskClaimRecord | null {
+    db.prepare(
+      `UPDATE task_claims
+       SET state = ?,
+           released_at_ms = ?,
+           heartbeat_at_ms = ?
+       WHERE id = ? AND state = 'active'`,
+    ).run(state, nowMs, nowMs, claimId);
+    return getTaskClaim(claimId);
+  }
+
+  function expireStaleTaskClaims(nowMs: number): number {
+    const result = db
+      .prepare(
+        `UPDATE task_claims
+         SET state = 'expired',
+             released_at_ms = ?,
+             heartbeat_at_ms = ?
+         WHERE state = 'active' AND lease_expires_at_ms < ?`,
+      )
+      .run(nowMs, nowMs, nowMs) as { changes?: number };
+    return Number(result.changes ?? 0);
+  }
+
   return {
     db,
     close,
@@ -465,11 +1256,33 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     archiveProject,
     projectExists,
     taskExists,
+    getActiveTeamByName,
+    listTeams,
+    getTeam,
+    createTeam,
+    updateTeam,
+    archiveTeam,
+    listTeamMembers,
+    upsertTeamMember,
+    removeTeamMember,
+    listProjectRepos,
+    getPrimaryProjectRepo,
+    syncProjectPrimaryRepoFromRepoRoot,
+    upsertProjectRepo,
     listTasks,
     getTask,
     createTask,
     updateTask,
     replaceTaskDependencies,
     countIncompleteDependencies,
+    createTaskAttempt,
+    updateTaskAttempt,
+    listTaskAttempts,
+    createTaskClaim,
+    getTaskClaim,
+    getActiveTaskClaimByTaskId,
+    heartbeatTaskClaim,
+    releaseTaskClaim,
+    expireStaleTaskClaims,
   };
 }

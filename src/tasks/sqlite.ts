@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
@@ -6,7 +7,59 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 
 export type TaskDatabase = DatabaseSync;
 
-export const TASK_SCHEMA_VERSION = 1;
+export const TASK_SCHEMA_VERSION = 2;
+
+function tableExists(db: TaskDatabase, tableName: string): boolean {
+  const row = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+    .get(tableName) as { name?: string } | undefined;
+  return Boolean(row?.name);
+}
+
+function assertSafeIdentifier(identifier: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
+    throw new Error(`invalid SQLite identifier: ${identifier}`);
+  }
+}
+
+export function getTaskSchemaVersion(db: TaskDatabase): number {
+  if (!tableExists(db, "task_schema_meta")) {
+    return tableExists(db, "tasks") || tableExists(db, "projects") ? 1 : 0;
+  }
+
+  const row = db
+    .prepare(`SELECT value FROM task_schema_meta WHERE key = 'schema_version' LIMIT 1`)
+    .get() as { value?: string } | undefined;
+  if (!row?.value) {
+    return tableExists(db, "tasks") || tableExists(db, "projects") ? 1 : 0;
+  }
+
+  const parsed = Number.parseInt(row.value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 1;
+  }
+  return parsed;
+}
+
+export function setTaskSchemaVersion(db: TaskDatabase, version: number): void {
+  db.prepare(
+    `INSERT INTO task_schema_meta(key, value)
+     VALUES('schema_version', ?)
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+  ).run(String(version));
+}
+
+export function ensureColumn(db: TaskDatabase, table: string, column: string, ddl: string): void {
+  assertSafeIdentifier(table);
+  assertSafeIdentifier(column);
+
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>;
+  if (rows.some((row) => row.name === column)) {
+    return;
+  }
+
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
 
 export function resolveTasksDbPath(stateDir = resolveStateDir()): string {
   return path.join(stateDir, "tasks", "tasks.sqlite");
@@ -19,8 +72,7 @@ export function openTaskDatabase(opts?: { dbPath?: string }): TaskDatabase {
   return new DatabaseSync(dbPath);
 }
 
-export function initializeTaskSchema(db: TaskDatabase): void {
-  db.exec("PRAGMA foreign_keys = ON;");
+function initializeBaseSchema(db: TaskDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS task_schema_meta (
       key TEXT PRIMARY KEY,
@@ -93,10 +145,316 @@ export function initializeTaskSchema(db: TaskDatabase): void {
       FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
   `);
+}
 
-  db.prepare(
-    `INSERT INTO task_schema_meta(key, value)
-     VALUES('schema_version', ?)
-     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-  ).run(String(TASK_SCHEMA_VERSION));
+function migrateTaskSchemaV1ToV2(db: TaskDatabase): void {
+  const nowMs = Date.now();
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS teams (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        lead_agent_id TEXT,
+        settings_json TEXT NOT NULL DEFAULT '{}',
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        archived_at_ms INTEGER
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_teams_name_active_ci
+        ON teams(lower(name))
+        WHERE archived_at_ms IS NULL;
+
+      CREATE TABLE IF NOT EXISTS team_members (
+        team_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('lead', 'member')),
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY(team_id, agent_id),
+        FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_team_members_team_role
+        ON team_members(team_id, role);
+
+      CREATE INDEX IF NOT EXISTS idx_team_members_agent_id
+        ON team_members(agent_id);
+
+      CREATE TABLE IF NOT EXISTS project_repos (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        repo_key TEXT NOT NULL,
+        role TEXT NOT NULL,
+        repo_root TEXT NOT NULL,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        branch_prefix TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_project_repos_project_repo_key
+        ON project_repos(project_id, repo_key);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_project_repos_project_repo_root
+        ON project_repos(project_id, repo_root);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_project_repos_single_primary
+        ON project_repos(project_id)
+        WHERE is_primary = 1;
+
+      CREATE INDEX IF NOT EXISTS idx_project_repos_project_primary
+        ON project_repos(project_id, is_primary);
+
+      CREATE TABLE IF NOT EXISTS task_claims (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        team_id TEXT,
+        lease_token TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('active', 'released', 'expired')),
+        leased_at_ms INTEGER NOT NULL,
+        heartbeat_at_ms INTEGER NOT NULL,
+        lease_expires_at_ms INTEGER NOT NULL,
+        released_at_ms INTEGER,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE SET NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_claims_task_active
+        ON task_claims(task_id)
+        WHERE state = 'active';
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_claims_lease_token
+        ON task_claims(lease_token);
+
+      CREATE INDEX IF NOT EXISTS idx_task_claims_lease_expiry_state
+        ON task_claims(state, lease_expires_at_ms);
+    `);
+
+    ensureColumn(
+      db,
+      "projects",
+      "primary_team_id",
+      "primary_team_id TEXT REFERENCES teams(id) ON DELETE SET NULL",
+    );
+
+    ensureColumn(db, "tasks", "team_id", "team_id TEXT REFERENCES teams(id) ON DELETE SET NULL");
+    ensureColumn(
+      db,
+      "tasks",
+      "current_attempt_id",
+      "current_attempt_id TEXT REFERENCES task_attempts(id) ON DELETE SET NULL",
+    );
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_team_status
+        ON tasks(team_id, status, updated_at_ms);
+    `);
+
+    ensureColumn(db, "task_attempts", "attempt_number", "attempt_number INTEGER");
+    ensureColumn(
+      db,
+      "task_attempts",
+      "claim_id",
+      "claim_id TEXT REFERENCES task_claims(id) ON DELETE SET NULL",
+    );
+    ensureColumn(
+      db,
+      "task_attempts",
+      "team_id",
+      "team_id TEXT REFERENCES teams(id) ON DELETE SET NULL",
+    );
+    ensureColumn(db, "task_attempts", "session_backend", "session_backend TEXT");
+    ensureColumn(db, "task_attempts", "session_id", "session_id TEXT");
+    ensureColumn(db, "task_attempts", "summary", "summary TEXT");
+    ensureColumn(db, "task_attempts", "error_text", "error_text TEXT");
+    ensureColumn(
+      db,
+      "task_attempts",
+      "command_outcome_json",
+      "command_outcome_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    ensureColumn(
+      db,
+      "task_attempts",
+      "test_outcome_json",
+      "test_outcome_json TEXT NOT NULL DEFAULT '{}'",
+    );
+    ensureColumn(
+      db,
+      "task_attempts",
+      "changed_files_json",
+      "changed_files_json TEXT NOT NULL DEFAULT '[]'",
+    );
+    ensureColumn(db, "task_attempts", "metrics_json", "metrics_json TEXT NOT NULL DEFAULT '{}'");
+    ensureColumn(db, "task_attempts", "created_at_ms", "created_at_ms INTEGER");
+    ensureColumn(db, "task_attempts", "updated_at_ms", "updated_at_ms INTEGER");
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_task_attempts_task_started
+        ON task_attempts(task_id, started_at_ms DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_task_attempts_claim_id
+        ON task_attempts(claim_id);
+    `);
+
+    db.prepare(
+      `UPDATE task_attempts SET summary = notes WHERE summary IS NULL AND notes IS NOT NULL`,
+    ).run();
+
+    const attempts = db
+      .prepare(
+        `SELECT id, task_id
+         FROM task_attempts
+         ORDER BY task_id ASC, started_at_ms ASC, rowid ASC`,
+      )
+      .all() as Array<{ id: string; task_id: string }>;
+    const setAttemptNumber = db.prepare(
+      `UPDATE task_attempts
+       SET attempt_number = ?
+       WHERE id = ? AND attempt_number IS NULL`,
+    );
+    let currentTaskId = "";
+    let attemptNumber = 0;
+    for (const attempt of attempts) {
+      if (attempt.task_id !== currentTaskId) {
+        currentTaskId = attempt.task_id;
+        attemptNumber = 1;
+      } else {
+        attemptNumber += 1;
+      }
+      setAttemptNumber.run(attemptNumber, attempt.id);
+    }
+
+    db.prepare(
+      `UPDATE task_attempts
+       SET created_at_ms = COALESCE(created_at_ms, started_at_ms, ?)
+       WHERE created_at_ms IS NULL`,
+    ).run(nowMs);
+    db.prepare(
+      `UPDATE task_attempts
+       SET updated_at_ms = COALESCE(updated_at_ms, ended_at_ms, started_at_ms, created_at_ms, ?)
+       WHERE updated_at_ms IS NULL`,
+    ).run(nowMs);
+
+    const projectsWithRoot = db
+      .prepare(
+        `SELECT id, repo_root, created_at_ms, updated_at_ms
+         FROM projects
+         WHERE repo_root IS NOT NULL AND trim(repo_root) != ''`,
+      )
+      .all() as Array<{
+      id: string;
+      repo_root: string;
+      created_at_ms: number;
+      updated_at_ms: number;
+    }>;
+
+    const findPrimaryRepo = db.prepare(
+      `SELECT id
+       FROM project_repos
+       WHERE project_id = ? AND is_primary = 1
+       LIMIT 1`,
+    );
+    const findRepoByRoot = db.prepare(
+      `SELECT id
+       FROM project_repos
+       WHERE project_id = ? AND repo_root = ?
+       LIMIT 1`,
+    );
+    const findDefaultRepo = db.prepare(
+      `SELECT id
+       FROM project_repos
+       WHERE project_id = ? AND repo_key = 'default'
+       LIMIT 1`,
+    );
+    const clearPrimary = db.prepare(`UPDATE project_repos SET is_primary = 0 WHERE project_id = ?`);
+    const promoteRepo = db.prepare(
+      `UPDATE project_repos
+       SET is_primary = 1, role = 'primary', updated_at_ms = ?
+       WHERE id = ?`,
+    );
+    const promoteDefaultRepo = db.prepare(
+      `UPDATE project_repos
+       SET role = 'primary', repo_root = ?, is_primary = 1, updated_at_ms = ?
+       WHERE id = ?`,
+    );
+    const insertPrimaryRepo = db.prepare(
+      `INSERT INTO project_repos (
+        id,
+        project_id,
+        repo_key,
+        role,
+        repo_root,
+        is_primary,
+        branch_prefix,
+        created_at_ms,
+        updated_at_ms
+      ) VALUES (?, ?, ?, 'primary', ?, 1, NULL, ?, ?)`,
+    );
+
+    for (const project of projectsWithRoot) {
+      const existingPrimary = findPrimaryRepo.get(project.id) as { id?: string } | undefined;
+      if (existingPrimary?.id) {
+        continue;
+      }
+
+      clearPrimary.run(project.id);
+      const existingRepo = findRepoByRoot.get(project.id, project.repo_root) as
+        | { id?: string }
+        | undefined;
+      if (existingRepo?.id) {
+        promoteRepo.run(project.updated_at_ms ?? nowMs, existingRepo.id);
+        continue;
+      }
+
+      const existingDefaultRepo = findDefaultRepo.get(project.id) as { id?: string } | undefined;
+      if (existingDefaultRepo?.id) {
+        promoteDefaultRepo.run(
+          project.repo_root,
+          project.updated_at_ms ?? nowMs,
+          existingDefaultRepo.id,
+        );
+        continue;
+      }
+
+      insertPrimaryRepo.run(
+        randomUUID(),
+        project.id,
+        "default",
+        project.repo_root,
+        project.created_at_ms ?? nowMs,
+        project.updated_at_ms ?? nowMs,
+      );
+    }
+
+    setTaskSchemaVersion(db, 2);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function initializeTaskSchema(db: TaskDatabase): void {
+  db.exec("PRAGMA foreign_keys = ON;");
+  initializeBaseSchema(db);
+
+  const currentVersion = getTaskSchemaVersion(db);
+  if (currentVersion <= 0) {
+    setTaskSchemaVersion(db, 1);
+  }
+
+  const effectiveVersion = getTaskSchemaVersion(db);
+  if (effectiveVersion < 2) {
+    migrateTaskSchemaV1ToV2(db);
+  }
+
+  if (getTaskSchemaVersion(db) < TASK_SCHEMA_VERSION) {
+    setTaskSchemaVersion(db, TASK_SCHEMA_VERSION);
+  }
 }

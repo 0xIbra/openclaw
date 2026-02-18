@@ -2,12 +2,26 @@ import type {
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
+  ProjectRepoRecord,
+  ProjectRepoUpsertInput,
   ProjectUpdateInput,
+  TaskAttemptCreateInput,
+  TaskAttemptRecord,
+  TaskAttemptUpdateInput,
+  TaskClaimCreateInput,
+  TaskClaimRecord,
   TaskCreateInput,
   TaskListFilters,
   TaskRecord,
   TaskTransitionInput,
   TaskUpdateInput,
+  TeamCreateInput,
+  TeamListFilters,
+  TeamMemberRecord,
+  TeamMemberRole,
+  TeamMemberUpsertInput,
+  TeamRecord,
+  TeamUpdateInput,
 } from "./types.js";
 import { validateTaskTransition } from "./lifecycle.js";
 import { createTaskStore, type TaskStore } from "./store.js";
@@ -19,6 +33,7 @@ const DEPENDENCY_GUARDED_STATUSES = new Set<TaskRecord["status"]>([
   "done",
 ]);
 const ASSIGNEE_GUARDED_STATUSES = new Set<TaskRecord["status"]>(["assigned", "running"]);
+const TEAM_MEMBER_ROLES = new Set<TeamMemberRole>(["lead", "member"]);
 
 export type TaskServiceErrorCode =
   | "invalid_input"
@@ -79,6 +94,14 @@ function requireNonEmpty(value: string, fieldName: string): string {
     throw new TaskServiceError("invalid_input", `${fieldName} is required`);
   }
   return trimmed;
+}
+
+function normalizeRole(role: string): TeamMemberRole {
+  const normalized = role.trim().toLowerCase() as TeamMemberRole;
+  if (!TEAM_MEMBER_ROLES.has(normalized)) {
+    throw new TaskServiceError("invalid_input", `invalid team member role '${role}'`);
+  }
+  return normalized;
 }
 
 export class TaskService {
@@ -159,6 +182,192 @@ export class TaskService {
       throw new TaskServiceError("not_found", `project not found: ${id}`);
     }
     return archived;
+  }
+
+  listTeams(filters?: TeamListFilters): TeamRecord[] {
+    return this.store.listTeams(filters);
+  }
+
+  getTeam(id: string): TeamRecord | null {
+    return this.store.getTeam(id);
+  }
+
+  createTeam(input: TeamCreateInput): TeamRecord {
+    const name = requireNonEmpty(input.name, "team name");
+    const existing = this.store.getActiveTeamByName(name);
+    if (existing) {
+      throw new TaskServiceError("conflict", `team '${name}' already exists (${existing.id})`);
+    }
+
+    const nowMs = this.now();
+    const team = this.store.createTeam(
+      {
+        name,
+        description: normalizeOptionalString(input.description),
+        leadAgentId: normalizeOptionalString(input.leadAgentId),
+        settings: input.settings ?? {},
+      },
+      nowMs,
+    );
+
+    if (team.leadAgentId) {
+      this.store.upsertTeamMember(
+        { teamId: team.id, agentId: team.leadAgentId, role: "lead" },
+        nowMs,
+      );
+    }
+
+    return team;
+  }
+
+  updateTeam(input: TeamUpdateInput): TeamRecord {
+    const existing = this.store.getTeam(input.id);
+    if (!existing) {
+      throw new TaskServiceError("not_found", `team not found: ${input.id}`);
+    }
+
+    const nextName = input.name ? requireNonEmpty(input.name, "team name") : undefined;
+    if (nextName && nextName.toLowerCase() !== existing.name.toLowerCase()) {
+      const conflict = this.store.getActiveTeamByName(nextName);
+      if (conflict && conflict.id !== existing.id) {
+        throw new TaskServiceError(
+          "conflict",
+          `team '${nextName}' already exists (${conflict.id})`,
+        );
+      }
+    }
+
+    const nowMs = this.now();
+    const updated = this.store.updateTeam(
+      {
+        id: input.id,
+        name: nextName,
+        description: normalizeOptionalString(input.description),
+        leadAgentId: normalizeOptionalNullableString(input.leadAgentId),
+        settings: input.settings,
+      },
+      nowMs,
+    );
+
+    if (!updated) {
+      throw new TaskServiceError("not_found", `team not found: ${input.id}`);
+    }
+
+    if (updated.leadAgentId) {
+      const members = this.store.listTeamMembers(updated.id);
+      for (const member of members) {
+        if (member.role === "lead" && member.agentId !== updated.leadAgentId) {
+          this.store.upsertTeamMember(
+            { teamId: updated.id, agentId: member.agentId, role: "member" },
+            nowMs,
+          );
+        }
+      }
+      this.store.upsertTeamMember(
+        { teamId: updated.id, agentId: updated.leadAgentId, role: "lead" },
+        nowMs,
+      );
+    }
+
+    return updated;
+  }
+
+  archiveTeam(id: string): TeamRecord {
+    const existing = this.store.getTeam(id);
+    if (!existing) {
+      throw new TaskServiceError("not_found", `team not found: ${id}`);
+    }
+    const archived = this.store.archiveTeam(id, this.now());
+    if (!archived) {
+      throw new TaskServiceError("not_found", `team not found: ${id}`);
+    }
+    return archived;
+  }
+
+  listTeamMembers(teamId: string): TeamMemberRecord[] {
+    const team = this.store.getTeam(teamId);
+    if (!team) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
+    return this.store.listTeamMembers(teamId);
+  }
+
+  upsertTeamMember(input: TeamMemberUpsertInput): TeamMemberRecord {
+    const team = this.store.getTeam(input.teamId);
+    if (!team) {
+      throw new TaskServiceError("not_found", `team not found: ${input.teamId}`);
+    }
+
+    const agentId = requireNonEmpty(input.agentId, "agentId");
+    const role = normalizeRole(input.role);
+    const nowMs = this.now();
+
+    if (role === "lead") {
+      const members = this.store.listTeamMembers(input.teamId);
+      for (const member of members) {
+        if (member.role === "lead" && member.agentId !== agentId) {
+          this.store.upsertTeamMember(
+            { teamId: input.teamId, agentId: member.agentId, role: "member" },
+            nowMs,
+          );
+        }
+      }
+      this.store.updateTeam({ id: input.teamId, leadAgentId: agentId }, nowMs);
+    }
+
+    const member = this.store.upsertTeamMember({ teamId: input.teamId, agentId, role }, nowMs);
+
+    if (role === "member" && team.leadAgentId === agentId) {
+      this.store.updateTeam({ id: input.teamId, leadAgentId: null }, nowMs);
+    }
+
+    return member;
+  }
+
+  removeTeamMember(teamId: string, agentId: string): boolean {
+    const team = this.store.getTeam(teamId);
+    if (!team) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
+
+    const removed = this.store.removeTeamMember(teamId, requireNonEmpty(agentId, "agentId"));
+    if (removed && team.leadAgentId === agentId) {
+      this.store.updateTeam({ id: teamId, leadAgentId: null }, this.now());
+    }
+    return removed;
+  }
+
+  listProjectRepos(projectId: string): ProjectRepoRecord[] {
+    const project = this.store.getProject(projectId);
+    if (!project) {
+      throw new TaskServiceError("not_found", `project not found: ${projectId}`);
+    }
+    return this.store.listProjectRepos(projectId);
+  }
+
+  getPrimaryProjectRepo(projectId: string): ProjectRepoRecord | null {
+    const project = this.store.getProject(projectId);
+    if (!project) {
+      throw new TaskServiceError("not_found", `project not found: ${projectId}`);
+    }
+    return this.store.getPrimaryProjectRepo(projectId);
+  }
+
+  upsertProjectRepo(input: ProjectRepoUpsertInput): ProjectRepoRecord {
+    if (!this.store.projectExists(input.projectId)) {
+      throw new TaskServiceError("not_found", `project not found: ${input.projectId}`);
+    }
+
+    return this.store.upsertProjectRepo(
+      {
+        ...input,
+        repoKey: requireNonEmpty(input.repoKey, "repoKey"),
+        role: requireNonEmpty(input.role, "role"),
+        repoRoot: requireNonEmpty(input.repoRoot, "repoRoot"),
+        branchPrefix: normalizeOptionalNullableString(input.branchPrefix),
+      },
+      this.now(),
+    );
   }
 
   listTasks(filters?: TaskListFilters): TaskRecord[] {
@@ -360,6 +569,64 @@ export class TaskService {
       throw new TaskServiceError("not_found", `task not found: ${input.id}`);
     }
     return updated;
+  }
+
+  createTaskAttempt(input: TaskAttemptCreateInput): TaskAttemptRecord {
+    if (!this.store.taskExists(input.taskId)) {
+      throw new TaskServiceError("not_found", `task not found: ${input.taskId}`);
+    }
+    return this.store.createTaskAttempt(input, this.now());
+  }
+
+  updateTaskAttempt(input: TaskAttemptUpdateInput): TaskAttemptRecord {
+    const updated = this.store.updateTaskAttempt(input, this.now());
+    if (!updated) {
+      throw new TaskServiceError("not_found", `task attempt not found: ${input.id}`);
+    }
+    return updated;
+  }
+
+  listTaskAttempts(taskId: string, limit?: number): TaskAttemptRecord[] {
+    if (!this.store.taskExists(taskId)) {
+      throw new TaskServiceError("not_found", `task not found: ${taskId}`);
+    }
+    return this.store.listTaskAttempts(taskId, limit ?? 50);
+  }
+
+  createTaskClaim(input: TaskClaimCreateInput): TaskClaimRecord {
+    if (!this.store.taskExists(input.taskId)) {
+      throw new TaskServiceError("not_found", `task not found: ${input.taskId}`);
+    }
+    try {
+      return this.store.createTaskClaim({ ...input, nowMs: this.now() });
+    } catch (error) {
+      const message = String(error);
+      if (message.includes("UNIQUE constraint failed: task_claims.task_id")) {
+        throw new TaskServiceError("conflict", `task already has an active claim: ${input.taskId}`);
+      }
+      throw error;
+    }
+  }
+
+  heartbeatTaskClaim(claimId: string, leaseDurationMs: number): TaskClaimRecord {
+    const duration = Math.max(1, Math.floor(leaseDurationMs));
+    const claim = this.store.heartbeatTaskClaim(claimId, duration, this.now());
+    if (!claim) {
+      throw new TaskServiceError("not_found", `task claim not found: ${claimId}`);
+    }
+    return claim;
+  }
+
+  releaseTaskClaim(claimId: string, state: "released" | "expired" = "released"): TaskClaimRecord {
+    const claim = this.store.releaseTaskClaim(claimId, this.now(), state);
+    if (!claim) {
+      throw new TaskServiceError("not_found", `task claim not found: ${claimId}`);
+    }
+    return claim;
+  }
+
+  expireStaleTaskClaims(): number {
+    return this.store.expireStaleTaskClaims(this.now());
   }
 }
 
