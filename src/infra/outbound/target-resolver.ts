@@ -153,11 +153,6 @@ function detectTargetKind(
     return "group";
   }
 
-  // For some channels (e.g., BlueBubbles), bare phone numbers are almost always DM targets.
-  if (channel === "bluebubbles" && /^\+?\d{6,}$/.test(trimmed)) {
-    return "user";
-  }
-
   return "group";
 }
 
@@ -343,11 +338,6 @@ export async function resolveMessagingTarget(params: {
       return true;
     }
     if (/^\+?\d{6,}$/.test(trimmed)) {
-      // BlueBubbles phone numbers should usually resolve via the directory to a DM chat,
-      // otherwise the provider may pick an existing group containing that handle.
-      if (params.channel === "bluebubbles") {
-        return false;
-      }
       return true;
     }
     if (trimmed.includes("@thread")) {
@@ -415,21 +405,6 @@ export async function resolveMessagingTarget(params: {
       candidates: match.entries,
     };
   }
-  // For BlueBubbles, allow sending directly to the normalized handle
-  // even if the directory doesn't contain an entry yet.
-  if (params.channel === "bluebubbles" && /^\+?\d{6,}$/.test(query)) {
-    const directTarget = preserveTargetCase(params.channel, raw, normalized);
-    return {
-      ok: true,
-      target: {
-        to: directTarget,
-        kind,
-        display: stripTargetPrefixes(raw),
-        source: "normalized",
-      },
-    };
-  }
-
   return {
     ok: false,
     error: unknownTargetError(providerLabel, raw, hint),

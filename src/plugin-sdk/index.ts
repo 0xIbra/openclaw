@@ -1,9 +1,4 @@
 export { CHANNEL_MESSAGE_ACTION_NAMES } from "../channels/plugins/message-action-names.js";
-export {
-  BLUEBUBBLES_ACTIONS,
-  BLUEBUBBLES_ACTION_NAMES,
-  BLUEBUBBLES_GROUP_ACTIONS,
-} from "../channels/plugins/bluebubbles-actions.js";
 export type {
   ChannelAccountSnapshot,
   ChannelAccountState,
@@ -107,10 +102,6 @@ export type {
   GroupToolPolicyBySenderConfig,
   MarkdownConfig,
   MarkdownTableMode,
-  MSTeamsChannelConfig,
-  MSTeamsConfig,
-  MSTeamsReplyStyle,
-  MSTeamsTeamConfig,
 } from "../config/types.js";
 export { DiscordConfigSchema, TelegramConfigSchema } from "../config/zod-schema.providers-core.js";
 export {
@@ -190,10 +181,8 @@ export type { NormalizedLocation } from "../channels/location.js";
 export { formatLocationText, toLocationContext } from "../channels/location.js";
 export { resolveControlCommandGate } from "../channels/command-gating.js";
 export {
-  resolveBlueBubblesGroupRequireMention,
   resolveDiscordGroupRequireMention,
   resolveTelegramGroupRequireMention,
-  resolveBlueBubblesGroupToolPolicy,
   resolveDiscordGroupToolPolicy,
   resolveTelegramGroupToolPolicy,
 } from "../channels/plugins/group-mentions.js";
@@ -308,9 +297,6 @@ export {
   parseTelegramThreadId,
 } from "../telegram/outbound-params.js";
 export { type TelegramProbe } from "../telegram/probe.js";
-
-// Channel: BlueBubbles
-export { collectBlueBubblesStatusIssues } from "../channels/plugins/status-issues/bluebubbles.js";
 
 // Media utilities
 export { loadWebMedia, type WebMediaResult } from "../media/web-media.js";

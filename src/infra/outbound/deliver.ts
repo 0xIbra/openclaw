@@ -29,21 +29,9 @@ import { normalizeReplyPayloadsForDelivery } from "./payloads.js";
 export type { NormalizedOutboundPayload } from "./payloads.js";
 export { normalizeOutboundPayloads } from "./payloads.js";
 
-type SendMatrixMessage = (
-  to: string,
-  text: string,
-  opts?: { mediaUrl?: string; replyToId?: string; threadId?: string; timeoutMs?: number },
-) => Promise<{ messageId: string; roomId: string }>;
-
 export type OutboundSendDeps = {
   sendTelegram?: typeof sendMessageTelegram;
   sendDiscord?: typeof sendMessageDiscord;
-  sendMatrix?: SendMatrixMessage;
-  sendMSTeams?: (
-    to: string,
-    text: string,
-    opts?: { mediaUrl?: string },
-  ) => Promise<{ messageId: string; conversationId: string }>;
 };
 
 export type OutboundDeliveryResult = {

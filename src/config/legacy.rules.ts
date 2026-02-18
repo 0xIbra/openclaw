@@ -10,10 +10,6 @@ export const LEGACY_CONFIG_RULES: LegacyConfigRule[] = [
     message: "discord config moved to channels.discord (auto-migrated on load).",
   },
   {
-    path: ["msteams"],
-    message: "msteams config moved to channels.msteams (auto-migrated on load).",
-  },
-  {
     path: ["routing", "allowFrom"],
     message:
       "routing.allowFrom was removed; use channels.telegram.allowFrom instead (auto-migrated on load).",

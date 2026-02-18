@@ -1,7 +1,5 @@
 import type { GroupPolicy } from "./types.base.js";
 import type { DiscordConfig } from "./types.discord.js";
-import type { IrcConfig } from "./types.irc.js";
-import type { MSTeamsConfig } from "./types.msteams.js";
 import type { TelegramConfig } from "./types.telegram.js";
 
 export type ChannelHeartbeatVisibilityConfig = {
@@ -36,8 +34,6 @@ export type ChannelsConfig = {
   defaults?: ChannelDefaultsConfig;
   telegram?: TelegramConfig;
   discord?: DiscordConfig;
-  irc?: IrcConfig;
-  msteams?: MSTeamsConfig;
   // Extension channels use dynamic keys - use ExtensionChannelConfig in extensions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;

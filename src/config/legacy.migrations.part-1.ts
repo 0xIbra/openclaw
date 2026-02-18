@@ -164,7 +164,7 @@ export const LEGACY_CONFIG_MIGRATIONS_PART_1: LegacyConfigMigration[] = [
     id: "providers->channels",
     describe: "Move provider config sections to channels.*",
     apply: (raw, changes) => {
-      const legacyKeys = ["telegram", "discord", "msteams"];
+      const legacyKeys = ["telegram", "discord"];
       const legacyEntries = legacyKeys.filter((key) => isRecord(raw[key]));
       if (legacyEntries.length === 0) {
         return;

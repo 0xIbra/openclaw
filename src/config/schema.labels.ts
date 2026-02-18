@@ -1,5 +1,3 @@
-import { IRC_FIELD_LABELS } from "./schema.irc.js";
-
 export const FIELD_LABELS: Record<string, string> = {
   "meta.lastTouchedVersion": "Config Last Touched Version",
   "meta.lastTouchedAt": "Config Last Touched At",
@@ -228,10 +226,6 @@ export const FIELD_LABELS: Record<string, string> = {
   "channels.telegram": "Telegram",
   "channels.telegram.customCommands": "Telegram Custom Commands",
   "channels.discord": "Discord",
-  "channels.mattermost": "Mattermost",
-  "channels.bluebubbles": "BlueBubbles",
-  "channels.msteams": "MS Teams",
-  ...IRC_FIELD_LABELS,
   "channels.telegram.botToken": "Telegram Bot Token",
   "channels.telegram.dmPolicy": "Telegram DM Policy",
   "channels.telegram.streamMode": "Telegram Stream Mode",
@@ -245,7 +239,6 @@ export const FIELD_LABELS: Record<string, string> = {
   "channels.telegram.network.autoSelectFamily": "Telegram autoSelectFamily",
   "channels.telegram.timeoutSeconds": "Telegram API Timeout (seconds)",
   "channels.telegram.capabilities.inlineButtons": "Telegram Inline Buttons",
-  "channels.bluebubbles.dmPolicy": "BlueBubbles DM Policy",
   "channels.discord.dmPolicy": "Discord DM Policy",
   "channels.discord.dm.policy": "Discord DM Policy",
   "channels.discord.retry.attempts": "Discord Retry Attempts",
@@ -263,11 +256,6 @@ export const FIELD_LABELS: Record<string, string> = {
   "channels.discord.activityType": "Discord Presence Activity Type",
   "channels.discord.activityUrl": "Discord Presence Activity URL",
   "channels.discord.token": "Discord Bot Token",
-  "channels.mattermost.botToken": "Mattermost Bot Token",
-  "channels.mattermost.baseUrl": "Mattermost Base URL",
-  "channels.mattermost.chatmode": "Mattermost Chat Mode",
-  "channels.mattermost.oncharPrefixes": "Mattermost Onchar Prefixes",
-  "channels.mattermost.requireMention": "Mattermost Require Mention",
   "agents.list[].skills": "Agent Skill Filter",
   "agents.list[].identity.avatar": "Agent Avatar",
   "discovery.mdns.mode": "mDNS Discovery Mode",
