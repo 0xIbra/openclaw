@@ -46,6 +46,10 @@ import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import {
+  createEmbeddedTaskExecutorFactory,
+  createTaskRuntimeSupervisor,
+} from "../tasks/runtime/index.js";
 import { createTaskService } from "../tasks/service.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
@@ -399,6 +403,22 @@ export async function startGatewayServer(
   });
   let { cron, storePath: cronStorePath } = cronState;
   const taskService = createTaskService();
+  const taskRuntimeEnabled =
+    !minimalTestGateway &&
+    process.env.VITEST !== "1" &&
+    process.env.OPENCLAW_DISABLE_TASK_RUNTIME !== "1";
+  const taskRuntimeSupervisor = taskRuntimeEnabled
+    ? createTaskRuntimeSupervisor({
+        taskService,
+        createExecutor: createEmbeddedTaskExecutorFactory({
+          config: cfgAtStart,
+        }),
+        onWorkerEvent: (event) => {
+          broadcast("tasks.worker.changed", event, { dropIfSlow: true });
+        },
+      })
+    : null;
+  taskRuntimeSupervisor?.start();
 
   const channelManager = createChannelManager({
     loadConfig,
@@ -686,6 +706,7 @@ export async function startGatewayServer(
     pluginServices,
     cron,
     heartbeatRunner,
+    taskRuntimeSupervisor,
     nodePresenceTimers,
     broadcast,
     tickInterval,

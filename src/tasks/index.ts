@@ -3,3 +3,4 @@ export * from "./lifecycle.js";
 export * from "./sqlite.js";
 export * from "./store.js";
 export * from "./service.js";
+export * from "./runtime/index.js";

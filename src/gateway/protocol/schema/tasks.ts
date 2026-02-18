@@ -347,3 +347,34 @@ export const TasksAttemptChangedEventSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+export const TaskWorkerStateSchema = Type.Union([
+  Type.Literal("idle"),
+  Type.Literal("claiming"),
+  Type.Literal("running"),
+  Type.Literal("recovering"),
+  Type.Literal("paused"),
+  Type.Literal("unhealthy"),
+]);
+
+export const TaskWorkerStatusSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+    teamIds: Type.Array(NonEmptyString),
+    state: TaskWorkerStateSchema,
+    currentTaskId: Type.Union([Type.String(), Type.Null()]),
+    lastHeartbeatAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+    errorStreak: Type.Integer({ minimum: 0 }),
+    lastError: Type.Union([Type.String(), Type.Null()]),
+    updatedAtMs: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksWorkerChangedEventSchema = Type.Object(
+  {
+    reason: Type.Union([Type.Literal("started"), Type.Literal("status"), Type.Literal("stopped")]),
+    worker: TaskWorkerStatusSchema,
+  },
+  { additionalProperties: false },
+);

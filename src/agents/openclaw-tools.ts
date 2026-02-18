@@ -20,6 +20,7 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTasksTool } from "./tools/tasks-tool.js";
+import { createTeamsTool } from "./tools/teams-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 export function createOpenClawTools(options?: {
@@ -104,6 +105,7 @@ export function createOpenClawTools(options?: {
     }),
     createProjectsTool(),
     createTasksTool(),
+    createTeamsTool(),
     ...(messageTool ? [messageTool] : []),
     createGatewayTool({
       agentSessionKey: options?.agentSessionKey,
