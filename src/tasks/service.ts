@@ -1,4 +1,9 @@
 import type {
+  BusAckInput,
+  BusDeliveryRecord,
+  BusMessageRecord,
+  BusPublishInput,
+  BusPublishResult,
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
@@ -7,11 +12,22 @@ import type {
   ProjectUpdateInput,
   TaskAttemptCreateInput,
   TaskAttemptRecord,
+  TaskAttemptFailInput,
+  TaskAttemptFailResult,
+  TaskAttemptFinishInput,
+  TaskAttemptFinishResult,
+  TaskAttemptStartInput,
+  TaskAttemptStartResult,
   TaskAttemptUpdateInput,
+  TaskClaimLeaseInput,
+  TaskClaimLeaseResult,
+  TaskClaimNextInput,
   TaskClaimCreateInput,
   TaskClaimRecord,
   TaskCreateInput,
   TaskListFilters,
+  TaskRequeueInput,
+  TaskRequeueResult,
   TaskRecord,
   TaskTransitionInput,
   TaskUpdateInput,
@@ -190,6 +206,14 @@ export class TaskService {
 
   getTeam(id: string): TeamRecord | null {
     return this.store.getTeam(id);
+  }
+
+  getTeamByName(name: string): TeamRecord | null {
+    const normalizedName = normalizeOptionalString(name);
+    if (!normalizedName) {
+      throw new TaskServiceError("invalid_input", "team name is required");
+    }
+    return this.store.getActiveTeamByName(normalizedName);
   }
 
   createTeam(input: TeamCreateInput): TeamRecord {
@@ -571,6 +595,95 @@ export class TaskService {
     return updated;
   }
 
+  claimNextTask(input: TaskClaimNextInput): TaskClaimLeaseResult | null {
+    const agentId = requireNonEmpty(input.agentId, "agentId");
+    const leaseDurationMs = Math.max(1, Math.floor(input.leaseDurationMs ?? 45_000));
+    return this.store.claimNextTask({
+      agentId,
+      teamId: normalizeOptionalNullableString(input.teamId),
+      leaseDurationMs,
+    });
+  }
+
+  leaseHeartbeat(input: TaskClaimLeaseInput): TaskClaimLeaseResult {
+    const claim = this.store.leaseHeartbeat({
+      claimId: requireNonEmpty(input.claimId, "claimId"),
+      agentId: requireNonEmpty(input.agentId, "agentId"),
+      leaseToken: requireNonEmpty(input.leaseToken, "leaseToken"),
+      leaseDurationMs: Math.max(1, Math.floor(input.leaseDurationMs)),
+    });
+    if (!claim) {
+      throw new TaskServiceError("not_found", `active claim not found: ${input.claimId}`);
+    }
+    return claim;
+  }
+
+  startAttempt(input: TaskAttemptStartInput): TaskAttemptStartResult {
+    const result = this.store.startAttempt({
+      ...input,
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      claimId: requireNonEmpty(input.claimId, "claimId"),
+      agentId: requireNonEmpty(input.agentId, "agentId"),
+      leaseToken: requireNonEmpty(input.leaseToken, "leaseToken"),
+      teamId: normalizeOptionalNullableString(input.teamId),
+      sessionBackend: normalizeOptionalNullableString(input.sessionBackend),
+      sessionId: normalizeOptionalNullableString(input.sessionId),
+      summary: normalizeOptionalNullableString(input.summary),
+    });
+    if (!result) {
+      throw new TaskServiceError("conflict", "attempt start preconditions failed");
+    }
+    return result;
+  }
+
+  finishAttempt(input: TaskAttemptFinishInput): TaskAttemptFinishResult {
+    const result = this.store.finishAttempt({
+      ...input,
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      claimId: requireNonEmpty(input.claimId, "claimId"),
+      attemptId: requireNonEmpty(input.attemptId, "attemptId"),
+      agentId: requireNonEmpty(input.agentId, "agentId"),
+      leaseToken: requireNonEmpty(input.leaseToken, "leaseToken"),
+      summary: normalizeOptionalNullableString(input.summary),
+      notes: normalizeOptionalNullableString(input.notes),
+      changedFiles: normalizeStringArray(input.changedFiles),
+    });
+    if (!result) {
+      throw new TaskServiceError("conflict", "attempt finish preconditions failed");
+    }
+    return result;
+  }
+
+  failAttempt(input: TaskAttemptFailInput): TaskAttemptFailResult {
+    const result = this.store.failAttempt({
+      ...input,
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      claimId: requireNonEmpty(input.claimId, "claimId"),
+      attemptId: requireNonEmpty(input.attemptId, "attemptId"),
+      agentId: requireNonEmpty(input.agentId, "agentId"),
+      leaseToken: requireNonEmpty(input.leaseToken, "leaseToken"),
+      errorText: normalizeOptionalNullableString(input.errorText),
+      summary: normalizeOptionalNullableString(input.summary),
+      notes: normalizeOptionalNullableString(input.notes),
+      changedFiles: normalizeStringArray(input.changedFiles),
+    });
+    if (!result) {
+      throw new TaskServiceError("conflict", "attempt fail preconditions failed");
+    }
+    return result;
+  }
+
+  requeueTask(input: TaskRequeueInput): TaskRequeueResult {
+    const result = this.store.requeueTask({
+      taskId: requireNonEmpty(input.taskId, "taskId"),
+      assignedAgentId: normalizeOptionalNullableString(input.assignedAgentId),
+    });
+    if (!result) {
+      throw new TaskServiceError("conflict", `task cannot be requeued: ${input.taskId}`);
+    }
+    return result;
+  }
+
   createTaskAttempt(input: TaskAttemptCreateInput): TaskAttemptRecord {
     if (!this.store.taskExists(input.taskId)) {
       throw new TaskServiceError("not_found", `task not found: ${input.taskId}`);
@@ -627,6 +740,58 @@ export class TaskService {
 
   expireStaleTaskClaims(): number {
     return this.store.expireStaleTaskClaims(this.now());
+  }
+
+  publishBusMessage(input: BusPublishInput): BusPublishResult {
+    const senderAgentId = requireNonEmpty(input.senderAgentId, "senderAgentId");
+    const receiverAgentId = requireNonEmpty(input.receiverAgentId, "receiverAgentId");
+    const messageType = requireNonEmpty(input.messageType, "messageType");
+    const body = requireNonEmpty(input.body, "body");
+    const result = this.store.publishBusMessage(
+      {
+        ...input,
+        senderAgentId,
+        receiverAgentId,
+        messageType,
+        body,
+        taskId: normalizeOptionalNullableString(input.taskId),
+        subject: normalizeOptionalNullableString(input.subject),
+        dedupeKey: normalizeOptionalNullableString(input.dedupeKey),
+      },
+      this.now(),
+    );
+    return result;
+  }
+
+  pullBusMessages(input: {
+    receiverAgentId: string;
+    maxMessages?: number;
+    visibilityTimeoutMs?: number;
+  }): BusDeliveryRecord[] {
+    return this.store.pullBusMessages({
+      receiverAgentId: requireNonEmpty(input.receiverAgentId, "receiverAgentId"),
+      maxMessages: Math.max(1, Math.floor(input.maxMessages ?? 20)),
+      visibilityTimeoutMs: Math.max(1, Math.floor(input.visibilityTimeoutMs ?? 30_000)),
+    });
+  }
+
+  ackBusMessage(input: BusAckInput) {
+    const record = this.store.ackBusMessage(
+      {
+        receiverAgentId: requireNonEmpty(input.receiverAgentId, "receiverAgentId"),
+        messageId: requireNonEmpty(input.messageId, "messageId"),
+        ackToken: requireNonEmpty(input.ackToken, "ackToken"),
+      },
+      this.now(),
+    );
+    if (!record) {
+      throw new TaskServiceError("not_found", `bus message not leased/ackable: ${input.messageId}`);
+    }
+    return record;
+  }
+
+  getBusMessage(messageId: string): BusMessageRecord | null {
+    return this.store.getBusMessage(requireNonEmpty(messageId, "messageId"));
   }
 }
 

@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type {
+  BusAckInput,
+  BusDeliveryRecord,
+  BusMessageRecord,
+  BusPublishInput,
+  BusPublishResult,
   ProjectCreateInput,
   ProjectListFilters,
   ProjectRecord,
@@ -8,12 +13,24 @@ import type {
   ProjectUpdateInput,
   TaskAttemptCreateInput,
   TaskAttemptRecord,
+  TaskAttemptFailInput,
+  TaskAttemptFailResult,
+  TaskAttemptFinishInput,
+  TaskAttemptFinishResult,
+  TaskAttemptStartInput,
+  TaskAttemptStartResult,
   TaskAttemptUpdateInput,
+  TaskClaimLeaseInput,
+  TaskClaimLeaseResult,
+  TaskClaimNextInput,
   TaskClaimCreateInput,
   TaskClaimRecord,
   TaskCreateInput,
   TaskListFilters,
+  TaskRequeueInput,
+  TaskRequeueResult,
   TaskRecord,
+  TaskStatus,
   TeamListFilters,
   TeamMemberRecord,
   TeamMemberUpsertInput,
@@ -121,6 +138,27 @@ type TaskAttemptRow = {
   metrics_json: string;
   created_at_ms: number | null;
   updated_at_ms: number | null;
+};
+
+type BusMessageRow = {
+  id: string;
+  sender_agent_id: string;
+  receiver_agent_id: string;
+  task_id: string | null;
+  message_type: string;
+  subject: string | null;
+  body: string;
+  payload_json: string;
+  dedupe_key: string | null;
+  state: BusMessageRecord["state"];
+  delivery_count: number;
+  max_deliveries: number;
+  created_at_ms: number;
+  available_at_ms: number;
+  leased_at_ms: number | null;
+  lease_expires_at_ms: number | null;
+  acked_at_ms: number | null;
+  expires_at_ms: number | null;
 };
 
 type TaskRowPatch = Partial<{
@@ -291,6 +329,35 @@ function mapTaskAttemptRow(row: TaskAttemptRow): TaskAttemptRecord {
     createdAtMs: row.created_at_ms == null ? null : Number(row.created_at_ms),
     updatedAtMs: row.updated_at_ms == null ? null : Number(row.updated_at_ms),
   };
+}
+
+function mapBusMessageRow(row: BusMessageRow): BusMessageRecord {
+  return {
+    id: row.id,
+    senderAgentId: row.sender_agent_id,
+    receiverAgentId: row.receiver_agent_id,
+    taskId: row.task_id ?? null,
+    messageType: row.message_type,
+    subject: row.subject ?? null,
+    body: row.body,
+    payload: asRecord(row.payload_json),
+    dedupeKey: row.dedupe_key ?? null,
+    state: row.state,
+    deliveryCount: Number(row.delivery_count),
+    maxDeliveries: Number(row.max_deliveries),
+    createdAtMs: Number(row.created_at_ms),
+    availableAtMs: Number(row.available_at_ms),
+    leasedAtMs: row.leased_at_ms == null ? null : Number(row.leased_at_ms),
+    leaseExpiresAtMs: row.lease_expires_at_ms == null ? null : Number(row.lease_expires_at_ms),
+    ackedAtMs: row.acked_at_ms == null ? null : Number(row.acked_at_ms),
+    expiresAtMs: row.expires_at_ms == null ? null : Number(row.expires_at_ms),
+  };
+}
+
+function buildAckToken(
+  row: Pick<BusMessageRow, "id" | "delivery_count" | "lease_expires_at_ms">,
+): string {
+  return `${row.id}:${row.delivery_count}:${row.lease_expires_at_ms ?? 0}`;
 }
 
 function normalizeJsonRecord(value: Record<string, unknown> | undefined): string {
@@ -1245,6 +1312,689 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     return Number(result.changes ?? 0);
   }
 
+  function claimNextTask(input: TaskClaimNextInput): TaskClaimLeaseResult | null {
+    const nowMs = Date.now();
+    const leaseDurationMs = Math.max(1, Math.floor(input.leaseDurationMs ?? 45_000));
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      expireStaleTaskClaims(nowMs);
+
+      const candidate = db
+        .prepare(
+          `SELECT t.id, t.team_id
+           FROM tasks t
+           JOIN projects p ON p.id = t.project_id
+           WHERE t.status = 'assigned'
+             AND t.assigned_agent_id = ?
+             AND p.archived_at_ms IS NULL
+             AND NOT EXISTS (
+               SELECT 1
+               FROM task_dependencies d
+               JOIN tasks dep ON dep.id = d.depends_on_task_id
+               WHERE d.task_id = t.id
+                 AND dep.status != 'done'
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM task_claims c
+               WHERE c.task_id = t.id
+                 AND c.state = 'active'
+             )
+           ORDER BY
+             CASE t.priority
+               WHEN 'critical' THEN 0
+               WHEN 'high' THEN 1
+               WHEN 'medium' THEN 2
+               WHEN 'low' THEN 3
+               ELSE 4
+             END ASC,
+             t.updated_at_ms ASC
+           LIMIT 1`,
+        )
+        .get(input.agentId) as { id?: string; team_id?: string | null } | undefined;
+
+      if (!candidate?.id) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const claimId = randomUUID();
+      const leaseToken = randomUUID();
+      const teamId = input.teamId ?? candidate.team_id ?? null;
+      const leaseExpiresAtMs = nowMs + leaseDurationMs;
+      db.prepare(
+        `INSERT INTO task_claims (
+          id,
+          task_id,
+          agent_id,
+          team_id,
+          lease_token,
+          state,
+          leased_at_ms,
+          heartbeat_at_ms,
+          lease_expires_at_ms,
+          released_at_ms
+        ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)`,
+      ).run(
+        claimId,
+        candidate.id,
+        input.agentId,
+        teamId,
+        leaseToken,
+        nowMs,
+        nowMs,
+        leaseExpiresAtMs,
+      );
+
+      if (input.teamId !== undefined) {
+        db.prepare(`UPDATE tasks SET team_id = ?, updated_at_ms = ? WHERE id = ?`).run(
+          input.teamId,
+          nowMs,
+          candidate.id,
+        );
+      }
+
+      const task = getTask(candidate.id);
+      const claim = getTaskClaim(claimId);
+      if (!task || !claim) {
+        throw new Error(`failed to create claim for task: ${candidate.id}`);
+      }
+
+      db.exec("COMMIT");
+      return { task, claim };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function leaseHeartbeat(input: TaskClaimLeaseInput): TaskClaimLeaseResult | null {
+    const nowMs = Date.now();
+    const leaseDurationMs = Math.max(1, Math.floor(input.leaseDurationMs));
+    const expiresAtMs = nowMs + leaseDurationMs;
+
+    const claimRow = db
+      .prepare(
+        `SELECT *
+         FROM task_claims
+         WHERE id = ?
+           AND state = 'active'
+           AND agent_id = ?
+           AND lease_token = ?
+           AND lease_expires_at_ms >= ?
+         LIMIT 1`,
+      )
+      .get(input.claimId, input.agentId, input.leaseToken, nowMs) as TaskClaimRow | undefined;
+    if (!claimRow) {
+      return null;
+    }
+
+    db.prepare(
+      `UPDATE task_claims
+       SET heartbeat_at_ms = ?,
+           lease_expires_at_ms = ?
+       WHERE id = ?
+         AND state = 'active'
+         AND lease_token = ?`,
+    ).run(nowMs, expiresAtMs, input.claimId, input.leaseToken);
+
+    const claim = getTaskClaim(input.claimId);
+    const task = getTask(claimRow.task_id);
+    if (!claim || !task) {
+      return null;
+    }
+
+    return { task, claim };
+  }
+
+  function startAttempt(input: TaskAttemptStartInput): TaskAttemptStartResult | null {
+    const nowMs = Date.now();
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const claimRow = db
+        .prepare(
+          `SELECT *
+           FROM task_claims
+           WHERE id = ?
+             AND task_id = ?
+             AND agent_id = ?
+             AND lease_token = ?
+             AND state = 'active'
+             AND lease_expires_at_ms >= ?
+           LIMIT 1`,
+        )
+        .get(input.claimId, input.taskId, input.agentId, input.leaseToken, nowMs) as
+        | TaskClaimRow
+        | undefined;
+      if (!claimRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const taskRow = db.prepare(`SELECT * FROM tasks WHERE id = ? LIMIT 1`).get(input.taskId) as
+        | TaskRow
+        | undefined;
+      if (!taskRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+      if (taskRow.status !== "assigned" && taskRow.status !== "running") {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const attemptId = randomUUID();
+      const attemptNumber = Number(taskRow.attempt_count) + 1;
+      db.prepare(
+        `INSERT INTO task_attempts (
+          id,
+          task_id,
+          status,
+          started_at_ms,
+          ended_at_ms,
+          agent_id,
+          notes,
+          attempt_number,
+          claim_id,
+          team_id,
+          session_backend,
+          session_id,
+          summary,
+          error_text,
+          command_outcome_json,
+          test_outcome_json,
+          changed_files_json,
+          metrics_json,
+          created_at_ms,
+          updated_at_ms
+        ) VALUES (?, ?, 'running', ?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, '{}', '{}', '[]', '{}', ?, ?)`,
+      ).run(
+        attemptId,
+        input.taskId,
+        nowMs,
+        input.agentId,
+        attemptNumber,
+        input.claimId,
+        input.teamId ?? claimRow.team_id ?? null,
+        input.sessionBackend ?? null,
+        input.sessionId ?? null,
+        input.summary ?? null,
+        nowMs,
+        nowMs,
+      );
+
+      db.prepare(
+        `UPDATE tasks
+         SET status = 'running',
+             team_id = COALESCE(team_id, ?),
+             current_attempt_id = ?,
+             attempt_count = ?,
+             updated_at_ms = ?,
+             started_at_ms = COALESCE(started_at_ms, ?)
+         WHERE id = ?`,
+      ).run(
+        input.teamId ?? claimRow.team_id ?? null,
+        attemptId,
+        attemptNumber,
+        nowMs,
+        nowMs,
+        input.taskId,
+      );
+
+      const task = getTask(input.taskId);
+      const claim = getTaskClaim(input.claimId);
+      const attempt = db
+        .prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`)
+        .get(attemptId) as TaskAttemptRow | undefined;
+      if (!task || !claim || !attempt) {
+        throw new Error(`failed to start attempt for task: ${input.taskId}`);
+      }
+
+      db.exec("COMMIT");
+      return { task, claim, attempt: mapTaskAttemptRow(attempt) };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function finishAttempt(input: TaskAttemptFinishInput): TaskAttemptFinishResult | null {
+    const nowMs = Date.now();
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const claimRow = db
+        .prepare(
+          `SELECT *
+           FROM task_claims
+           WHERE id = ?
+             AND task_id = ?
+             AND agent_id = ?
+             AND lease_token = ?
+             AND state = 'active'
+             AND lease_expires_at_ms >= ?
+           LIMIT 1`,
+        )
+        .get(input.claimId, input.taskId, input.agentId, input.leaseToken, nowMs) as
+        | TaskClaimRow
+        | undefined;
+      if (!claimRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      db.prepare(
+        `UPDATE task_attempts
+         SET status = 'completed',
+             ended_at_ms = ?,
+             notes = ?,
+             summary = ?,
+             command_outcome_json = ?,
+             test_outcome_json = ?,
+             changed_files_json = ?,
+             metrics_json = ?,
+             updated_at_ms = ?
+         WHERE id = ? AND task_id = ?`,
+      ).run(
+        nowMs,
+        input.notes ?? null,
+        input.summary ?? null,
+        normalizeJsonRecord(input.commandOutcome),
+        normalizeJsonRecord(input.testOutcome),
+        JSON.stringify(input.changedFiles ?? []),
+        normalizeJsonRecord(input.metrics),
+        nowMs,
+        input.attemptId,
+        input.taskId,
+      );
+
+      db.prepare(
+        `UPDATE task_claims
+         SET state = 'released',
+             released_at_ms = ?,
+             heartbeat_at_ms = ?
+         WHERE id = ? AND state = 'active'`,
+      ).run(nowMs, nowMs, input.claimId);
+
+      db.prepare(`UPDATE tasks SET status = 'review', updated_at_ms = ? WHERE id = ?`).run(
+        nowMs,
+        input.taskId,
+      );
+
+      const task = getTask(input.taskId);
+      const claim = getTaskClaim(input.claimId);
+      const attempt = db
+        .prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`)
+        .get(input.attemptId) as TaskAttemptRow | undefined;
+      if (!task || !claim || !attempt) {
+        throw new Error(`failed to finish attempt for task: ${input.taskId}`);
+      }
+
+      db.exec("COMMIT");
+      return { task, claim, attempt: mapTaskAttemptRow(attempt) };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function failAttempt(input: TaskAttemptFailInput): TaskAttemptFailResult | null {
+    const nowMs = Date.now();
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const claimRow = db
+        .prepare(
+          `SELECT *
+           FROM task_claims
+           WHERE id = ?
+             AND task_id = ?
+             AND agent_id = ?
+             AND lease_token = ?
+             AND state = 'active'
+             AND lease_expires_at_ms >= ?
+           LIMIT 1`,
+        )
+        .get(input.claimId, input.taskId, input.agentId, input.leaseToken, nowMs) as
+        | TaskClaimRow
+        | undefined;
+      if (!claimRow) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      db.prepare(
+        `UPDATE task_attempts
+         SET status = 'failed',
+             ended_at_ms = ?,
+             notes = ?,
+             summary = ?,
+             error_text = ?,
+             command_outcome_json = ?,
+             test_outcome_json = ?,
+             changed_files_json = ?,
+             metrics_json = ?,
+             updated_at_ms = ?
+         WHERE id = ? AND task_id = ?`,
+      ).run(
+        nowMs,
+        input.notes ?? null,
+        input.summary ?? null,
+        input.errorText ?? null,
+        normalizeJsonRecord(input.commandOutcome),
+        normalizeJsonRecord(input.testOutcome),
+        JSON.stringify(input.changedFiles ?? []),
+        normalizeJsonRecord(input.metrics),
+        nowMs,
+        input.attemptId,
+        input.taskId,
+      );
+
+      db.prepare(
+        `UPDATE task_claims
+         SET state = 'released',
+             released_at_ms = ?,
+             heartbeat_at_ms = ?
+         WHERE id = ? AND state = 'active'`,
+      ).run(nowMs, nowMs, input.claimId);
+
+      db.prepare(`UPDATE tasks SET status = 'failed', updated_at_ms = ? WHERE id = ?`).run(
+        nowMs,
+        input.taskId,
+      );
+
+      const task = getTask(input.taskId);
+      const claim = getTaskClaim(input.claimId);
+      const attempt = db
+        .prepare(`SELECT * FROM task_attempts WHERE id = ? LIMIT 1`)
+        .get(input.attemptId) as TaskAttemptRow | undefined;
+      if (!task || !claim || !attempt) {
+        throw new Error(`failed to fail attempt for task: ${input.taskId}`);
+      }
+
+      const remainingAttempts = Math.max(0, task.maxAttempts - task.attemptCount);
+      const retryEligible = remainingAttempts > 0;
+
+      db.exec("COMMIT");
+      return {
+        task,
+        claim,
+        attempt: mapTaskAttemptRow(attempt),
+        retryEligible,
+        remainingAttempts,
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function requeueTask(input: TaskRequeueInput): TaskRequeueResult | null {
+    const nowMs = Date.now();
+    const nextAssignee = input.assignedAgentId?.trim() ? input.assignedAgentId.trim() : null;
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = getTask(input.taskId);
+      if (!existing) {
+        db.exec("COMMIT");
+        return null;
+      }
+      if (
+        existing.status !== "failed" &&
+        existing.status !== "blocked" &&
+        existing.status !== "backlog" &&
+        existing.status !== "assigned"
+      ) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      let nextStatus: TaskStatus = existing.status;
+      if (existing.status === "failed" || existing.status === "blocked") {
+        nextStatus = "backlog";
+      }
+      if (nextAssignee) {
+        const hasIncomplete = countIncompleteDependencies(existing.id) > 0;
+        if (hasIncomplete) {
+          db.exec("COMMIT");
+          return null;
+        }
+        nextStatus = "assigned";
+      } else if (nextStatus === "assigned") {
+        nextStatus = "backlog";
+      }
+
+      db.prepare(
+        `UPDATE task_claims
+         SET state = 'released',
+             released_at_ms = ?,
+             heartbeat_at_ms = ?
+         WHERE task_id = ? AND state = 'active'`,
+      ).run(nowMs, nowMs, existing.id);
+
+      db.prepare(
+        `UPDATE tasks
+         SET status = ?,
+             assigned_agent_id = ?,
+             current_attempt_id = NULL,
+             updated_at_ms = ?,
+             completed_at_ms = CASE WHEN ? = 'done' THEN completed_at_ms ELSE NULL END
+         WHERE id = ?`,
+      ).run(nextStatus, nextAssignee, nowMs, nextStatus, existing.id);
+
+      const task = getTask(existing.id);
+      if (!task) {
+        throw new Error(`failed to requeue task: ${existing.id}`);
+      }
+
+      db.exec("COMMIT");
+      return { task, previousStatus: existing.status };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function getBusMessage(id: string): BusMessageRecord | null {
+    const row = db.prepare(`SELECT * FROM task_bus_messages WHERE id = ? LIMIT 1`).get(id) as
+      | BusMessageRow
+      | undefined;
+    return row ? mapBusMessageRow(row) : null;
+  }
+
+  function publishBusMessage(input: BusPublishInput, nowMs: number): BusPublishResult {
+    const id = randomUUID();
+    const delayMs = Math.max(0, Math.floor(input.delayMs ?? 0));
+    const ttlMs = input.ttlMs == null ? null : Math.max(1, Math.floor(input.ttlMs));
+    const maxDeliveries = Math.max(1, Math.min(1000, Math.floor(input.maxDeliveries ?? 20)));
+    const dedupeKey = input.dedupeKey?.trim() ? input.dedupeKey.trim() : null;
+
+    try {
+      db.prepare(
+        `INSERT INTO task_bus_messages (
+          id,
+          sender_agent_id,
+          receiver_agent_id,
+          task_id,
+          message_type,
+          subject,
+          body,
+          payload_json,
+          dedupe_key,
+          state,
+          delivery_count,
+          max_deliveries,
+          created_at_ms,
+          available_at_ms,
+          leased_at_ms,
+          lease_expires_at_ms,
+          acked_at_ms,
+          expires_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, NULL, ?)`,
+      ).run(
+        id,
+        input.senderAgentId,
+        input.receiverAgentId,
+        input.taskId ?? null,
+        input.messageType,
+        input.subject ?? null,
+        input.body,
+        normalizeJsonRecord(input.payload),
+        dedupeKey,
+        maxDeliveries,
+        nowMs,
+        nowMs + delayMs,
+        ttlMs == null ? null : nowMs + ttlMs,
+      );
+      return { messageId: id, deduped: false };
+    } catch (error) {
+      const errorText = String(error);
+      if (
+        dedupeKey &&
+        errorText.includes("UNIQUE constraint failed: task_bus_messages.receiver_agent_id")
+      ) {
+        const existing = db
+          .prepare(
+            `SELECT id
+             FROM task_bus_messages
+             WHERE receiver_agent_id = ?
+               AND dedupe_key = ?
+               AND state != 'expired'
+             ORDER BY created_at_ms DESC
+             LIMIT 1`,
+          )
+          .get(input.receiverAgentId, dedupeKey) as { id?: string } | undefined;
+        if (existing?.id) {
+          return { messageId: existing.id, deduped: true };
+        }
+      }
+      throw error;
+    }
+  }
+
+  function pullBusMessages(input: {
+    receiverAgentId: string;
+    maxMessages: number;
+    visibilityTimeoutMs: number;
+  }): BusDeliveryRecord[] {
+    const nowMs = Date.now();
+    const maxMessages = Math.max(1, Math.min(100, Math.floor(input.maxMessages)));
+    const visibilityTimeoutMs = Math.max(1, Math.floor(input.visibilityTimeoutMs));
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(
+        `UPDATE task_bus_messages
+         SET state = 'expired'
+         WHERE state IN ('pending', 'leased')
+           AND expires_at_ms IS NOT NULL
+           AND expires_at_ms <= ?`,
+      ).run(nowMs);
+
+      db.prepare(
+        `UPDATE task_bus_messages
+         SET state = 'dead_letter'
+         WHERE state = 'leased'
+           AND lease_expires_at_ms IS NOT NULL
+           AND lease_expires_at_ms < ?
+           AND delivery_count >= max_deliveries`,
+      ).run(nowMs);
+
+      db.prepare(
+        `UPDATE task_bus_messages
+         SET state = 'pending',
+             available_at_ms = ?,
+             leased_at_ms = NULL,
+             lease_expires_at_ms = NULL
+         WHERE state = 'leased'
+           AND lease_expires_at_ms IS NOT NULL
+           AND lease_expires_at_ms < ?
+           AND delivery_count < max_deliveries`,
+      ).run(nowMs, nowMs);
+
+      const candidates = db
+        .prepare(
+          `SELECT *
+           FROM task_bus_messages
+           WHERE receiver_agent_id = ?
+             AND state = 'pending'
+             AND available_at_ms <= ?
+             AND (expires_at_ms IS NULL OR expires_at_ms > ?)
+           ORDER BY available_at_ms ASC, created_at_ms ASC
+           LIMIT ?`,
+        )
+        .all(input.receiverAgentId, nowMs, nowMs, maxMessages) as BusMessageRow[];
+
+      const deliveries: BusDeliveryRecord[] = [];
+      for (const candidate of candidates) {
+        const updated = db
+          .prepare(
+            `UPDATE task_bus_messages
+             SET state = 'leased',
+                 delivery_count = delivery_count + 1,
+                 leased_at_ms = ?,
+                 lease_expires_at_ms = ?
+             WHERE id = ? AND state = 'pending'`,
+          )
+          .run(nowMs, nowMs + visibilityTimeoutMs, candidate.id) as { changes?: number };
+        if (Number(updated.changes ?? 0) < 1) {
+          continue;
+        }
+        const row = db
+          .prepare(`SELECT * FROM task_bus_messages WHERE id = ? LIMIT 1`)
+          .get(candidate.id) as BusMessageRow | undefined;
+        if (!row) {
+          continue;
+        }
+        deliveries.push({
+          message: mapBusMessageRow(row),
+          ackToken: buildAckToken(row),
+        });
+      }
+
+      db.exec("COMMIT");
+      return deliveries;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function ackBusMessage(input: BusAckInput, nowMs: number): BusMessageRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM task_bus_messages
+         WHERE id = ?
+           AND receiver_agent_id = ?
+           AND state = 'leased'
+         LIMIT 1`,
+      )
+      .get(input.messageId, input.receiverAgentId) as BusMessageRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    if (row.lease_expires_at_ms != null && Number(row.lease_expires_at_ms) < nowMs) {
+      return null;
+    }
+    if (buildAckToken(row) !== input.ackToken) {
+      return null;
+    }
+
+    db.prepare(
+      `UPDATE task_bus_messages
+       SET state = 'acked',
+           acked_at_ms = ?
+       WHERE id = ? AND state = 'leased'`,
+    ).run(nowMs, input.messageId);
+
+    return getBusMessage(input.messageId);
+  }
+
   return {
     db,
     close,
@@ -1284,5 +2034,15 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     heartbeatTaskClaim,
     releaseTaskClaim,
     expireStaleTaskClaims,
+    claimNextTask,
+    leaseHeartbeat,
+    startAttempt,
+    finishAttempt,
+    failAttempt,
+    requeueTask,
+    getBusMessage,
+    publishBusMessage,
+    pullBusMessages,
+    ackBusMessage,
   };
 }

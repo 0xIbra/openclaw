@@ -229,7 +229,7 @@ describe("gateway send mirroring", () => {
     expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
       expect.objectContaining({
         mirror: expect.objectContaining({
-          sessionKey: "agent:main:slack:channel:resolved",
+          sessionKey: "agent:main:main",
           agentId: "main",
         }),
       }),

@@ -51,6 +51,8 @@ export const TaskSchema = Type.Object(
     dependsOnTaskIds: Type.Array(NonEmptyString),
     blockedByTaskIds: Type.Array(NonEmptyString),
     assignedAgentId: Type.Union([Type.String(), Type.Null()]),
+    teamId: Type.Union([Type.String(), Type.Null()]),
+    currentAttemptId: Type.Union([Type.String(), Type.Null()]),
     maxAttempts: Type.Integer({ minimum: 1 }),
     attemptCount: Type.Integer({ minimum: 0 }),
     relevantPaths: Type.Array(Type.String()),
@@ -60,6 +62,48 @@ export const TaskSchema = Type.Object(
     updatedAtMs: Type.Integer({ minimum: 0 }),
     startedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
     completedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskClaimSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    taskId: NonEmptyString,
+    agentId: NonEmptyString,
+    teamId: Type.Union([Type.String(), Type.Null()]),
+    leaseToken: NonEmptyString,
+    state: Type.Union([Type.Literal("active"), Type.Literal("released"), Type.Literal("expired")]),
+    leasedAtMs: Type.Integer({ minimum: 0 }),
+    heartbeatAtMs: Type.Integer({ minimum: 0 }),
+    leaseExpiresAtMs: Type.Integer({ minimum: 0 }),
+    releasedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskAttemptSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    taskId: NonEmptyString,
+    status: NonEmptyString,
+    startedAtMs: Type.Integer({ minimum: 0 }),
+    endedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+    agentId: Type.Union([Type.String(), Type.Null()]),
+    notes: Type.Union([Type.String(), Type.Null()]),
+    attemptNumber: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+    claimId: Type.Union([Type.String(), Type.Null()]),
+    teamId: Type.Union([Type.String(), Type.Null()]),
+    sessionBackend: Type.Union([Type.String(), Type.Null()]),
+    sessionId: Type.Union([Type.String(), Type.Null()]),
+    summary: Type.Union([Type.String(), Type.Null()]),
+    errorText: Type.Union([Type.String(), Type.Null()]),
+    commandOutcome: Type.Record(Type.String(), Type.Unknown()),
+    testOutcome: Type.Record(Type.String(), Type.Unknown()),
+    changedFiles: Type.Array(Type.String()),
+    metrics: Type.Record(Type.String(), Type.Unknown()),
+    createdAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+    updatedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
   },
   { additionalProperties: false },
 );
@@ -140,6 +184,135 @@ export const TasksTransitionParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TasksClaimNextParamsSchema = Type.Object(
+  {
+    agentId: NonEmptyString,
+    teamId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    leaseDurationMs: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksClaimNextResultSchema = Type.Object(
+  {
+    task: Type.Union([TaskSchema, Type.Null()]),
+    claim: Type.Union([TaskClaimSchema, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksLeaseHeartbeatParamsSchema = Type.Object(
+  {
+    claimId: NonEmptyString,
+    agentId: NonEmptyString,
+    leaseToken: NonEmptyString,
+    leaseDurationMs: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksLeaseHeartbeatResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptStartParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    claimId: NonEmptyString,
+    agentId: NonEmptyString,
+    leaseToken: NonEmptyString,
+    teamId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    sessionBackend: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    sessionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    summary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptStartResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+    attempt: TaskAttemptSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptFinishParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    claimId: NonEmptyString,
+    attemptId: NonEmptyString,
+    agentId: NonEmptyString,
+    leaseToken: NonEmptyString,
+    summary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    notes: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    commandOutcome: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    testOutcome: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    changedFiles: Type.Optional(Type.Array(Type.String())),
+    metrics: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptFinishResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+    attempt: TaskAttemptSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptFailParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    claimId: NonEmptyString,
+    attemptId: NonEmptyString,
+    agentId: NonEmptyString,
+    leaseToken: NonEmptyString,
+    errorText: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    summary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    notes: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    commandOutcome: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    testOutcome: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    changedFiles: Type.Optional(Type.Array(Type.String())),
+    metrics: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptFailResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+    attempt: TaskAttemptSchema,
+    retryEligible: Type.Boolean(),
+    remainingAttempts: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksRequeueParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    assignedAgentId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksRequeueResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    previousStatus: TaskStatusSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const TasksChangedEventSchema = Type.Object(
   {
     reason: Type.Union([
@@ -148,6 +321,29 @@ export const TasksChangedEventSchema = Type.Object(
       Type.Literal("transitioned"),
     ]),
     task: TaskSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksClaimedEventSchema = Type.Object(
+  {
+    reason: Type.Literal("claimed"),
+    task: TaskSchema,
+    claim: TaskClaimSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksAttemptChangedEventSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    reason: Type.Union([
+      Type.Literal("started"),
+      Type.Literal("finished"),
+      Type.Literal("failed"),
+      Type.Literal("requeued"),
+    ]),
+    attempt: TaskAttemptSchema,
   },
   { additionalProperties: false },
 );

@@ -34,6 +34,17 @@ import type {
   SkillsUpdateParamsSchema,
 } from "./agents-models-skills.js";
 import type {
+  BusAckParamsSchema,
+  BusAckResultSchema,
+  BusDeliverySchema,
+  BusMessageEventSchema,
+  BusMessageSchema,
+  BusPublishParamsSchema,
+  BusPublishResultSchema,
+  BusPullParamsSchema,
+  BusPullResultSchema,
+} from "./bus.js";
+import type {
   ChannelsLogoutParamsSchema,
   ChannelsStatusParamsSchema,
   ChannelsStatusResultSchema,
@@ -128,14 +139,45 @@ import type {
 import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import type {
   TaskSchema,
+  TaskAttemptSchema,
+  TaskClaimSchema,
+  TasksAttemptChangedEventSchema,
+  TasksAttemptFailParamsSchema,
+  TasksAttemptFailResultSchema,
+  TasksAttemptFinishParamsSchema,
+  TasksAttemptFinishResultSchema,
+  TasksAttemptStartParamsSchema,
+  TasksAttemptStartResultSchema,
+  TasksClaimedEventSchema,
+  TasksClaimNextParamsSchema,
+  TasksClaimNextResultSchema,
   TasksChangedEventSchema,
   TasksCreateParamsSchema,
   TasksGetParamsSchema,
+  TasksLeaseHeartbeatParamsSchema,
+  TasksLeaseHeartbeatResultSchema,
   TasksListParamsSchema,
   TasksListResultSchema,
+  TasksRequeueParamsSchema,
+  TasksRequeueResultSchema,
   TasksTransitionParamsSchema,
   TasksUpdateParamsSchema,
 } from "./tasks.js";
+import type {
+  TeamMemberSchema,
+  TeamSchema,
+  TeamWithMembersResultSchema,
+  TeamsChangedEventSchema,
+  TeamsCreateParamsSchema,
+  TeamsDeleteParamsSchema,
+  TeamsGetByNameParamsSchema,
+  TeamsGetParamsSchema,
+  TeamsListParamsSchema,
+  TeamsListResultSchema,
+  TeamsMembersAddParamsSchema,
+  TeamsMembersRemoveParamsSchema,
+  TeamsUpdateParamsSchema,
+} from "./teams.js";
 import type {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -207,6 +249,15 @@ export type WizardStatusResult = Static<typeof WizardStatusResultSchema>;
 export type ChannelsStatusParams = Static<typeof ChannelsStatusParamsSchema>;
 export type ChannelsStatusResult = Static<typeof ChannelsStatusResultSchema>;
 export type ChannelsLogoutParams = Static<typeof ChannelsLogoutParamsSchema>;
+export type BusMessage = Static<typeof BusMessageSchema>;
+export type BusDelivery = Static<typeof BusDeliverySchema>;
+export type BusPublishParams = Static<typeof BusPublishParamsSchema>;
+export type BusPublishResult = Static<typeof BusPublishResultSchema>;
+export type BusPullParams = Static<typeof BusPullParamsSchema>;
+export type BusPullResult = Static<typeof BusPullResultSchema>;
+export type BusAckParams = Static<typeof BusAckParamsSchema>;
+export type BusAckResult = Static<typeof BusAckResultSchema>;
+export type BusMessageEvent = Static<typeof BusMessageEventSchema>;
 export type AgentSummary = Static<typeof AgentSummarySchema>;
 export type AgentsFileEntry = Static<typeof AgentsFileEntrySchema>;
 export type AgentsCreateParams = Static<typeof AgentsCreateParamsSchema>;
@@ -255,13 +306,42 @@ export type DevicePairRejectParams = Static<typeof DevicePairRejectParamsSchema>
 export type DeviceTokenRotateParams = Static<typeof DeviceTokenRotateParamsSchema>;
 export type DeviceTokenRevokeParams = Static<typeof DeviceTokenRevokeParamsSchema>;
 export type Task = Static<typeof TaskSchema>;
+export type TaskClaim = Static<typeof TaskClaimSchema>;
+export type TaskAttempt = Static<typeof TaskAttemptSchema>;
 export type TasksListParams = Static<typeof TasksListParamsSchema>;
 export type TasksListResult = Static<typeof TasksListResultSchema>;
 export type TasksCreateParams = Static<typeof TasksCreateParamsSchema>;
 export type TasksGetParams = Static<typeof TasksGetParamsSchema>;
 export type TasksUpdateParams = Static<typeof TasksUpdateParamsSchema>;
 export type TasksTransitionParams = Static<typeof TasksTransitionParamsSchema>;
+export type TasksClaimNextParams = Static<typeof TasksClaimNextParamsSchema>;
+export type TasksClaimNextResult = Static<typeof TasksClaimNextResultSchema>;
+export type TasksLeaseHeartbeatParams = Static<typeof TasksLeaseHeartbeatParamsSchema>;
+export type TasksLeaseHeartbeatResult = Static<typeof TasksLeaseHeartbeatResultSchema>;
+export type TasksAttemptStartParams = Static<typeof TasksAttemptStartParamsSchema>;
+export type TasksAttemptStartResult = Static<typeof TasksAttemptStartResultSchema>;
+export type TasksAttemptFinishParams = Static<typeof TasksAttemptFinishParamsSchema>;
+export type TasksAttemptFinishResult = Static<typeof TasksAttemptFinishResultSchema>;
+export type TasksAttemptFailParams = Static<typeof TasksAttemptFailParamsSchema>;
+export type TasksAttemptFailResult = Static<typeof TasksAttemptFailResultSchema>;
+export type TasksRequeueParams = Static<typeof TasksRequeueParamsSchema>;
+export type TasksRequeueResult = Static<typeof TasksRequeueResultSchema>;
 export type TasksChangedEvent = Static<typeof TasksChangedEventSchema>;
+export type TasksClaimedEvent = Static<typeof TasksClaimedEventSchema>;
+export type TasksAttemptChangedEvent = Static<typeof TasksAttemptChangedEventSchema>;
+export type Team = Static<typeof TeamSchema>;
+export type TeamMember = Static<typeof TeamMemberSchema>;
+export type TeamWithMembersResult = Static<typeof TeamWithMembersResultSchema>;
+export type TeamsListParams = Static<typeof TeamsListParamsSchema>;
+export type TeamsListResult = Static<typeof TeamsListResultSchema>;
+export type TeamsCreateParams = Static<typeof TeamsCreateParamsSchema>;
+export type TeamsGetParams = Static<typeof TeamsGetParamsSchema>;
+export type TeamsGetByNameParams = Static<typeof TeamsGetByNameParamsSchema>;
+export type TeamsUpdateParams = Static<typeof TeamsUpdateParamsSchema>;
+export type TeamsDeleteParams = Static<typeof TeamsDeleteParamsSchema>;
+export type TeamsMembersAddParams = Static<typeof TeamsMembersAddParamsSchema>;
+export type TeamsMembersRemoveParams = Static<typeof TeamsMembersRemoveParamsSchema>;
+export type TeamsChangedEvent = Static<typeof TeamsChangedEventSchema>;
 export type ChatAbortParams = Static<typeof ChatAbortParamsSchema>;
 export type ChatInjectParams = Static<typeof ChatInjectParamsSchema>;
 export type ChatEvent = Static<typeof ChatEventSchema>;

@@ -35,6 +35,13 @@ export const TASK_BOARD_STATUS_VALUES = [
 
 export const TEAM_MEMBER_ROLE_VALUES = ["lead", "member"] as const;
 export const TASK_CLAIM_STATE_VALUES = ["active", "released", "expired"] as const;
+export const BUS_MESSAGE_STATE_VALUES = [
+  "pending",
+  "leased",
+  "acked",
+  "expired",
+  "dead_letter",
+] as const;
 
 export type TaskType = (typeof TASK_TYPE_VALUES)[number];
 export type TaskPriority = (typeof TASK_PRIORITY_VALUES)[number];
@@ -43,6 +50,7 @@ export type TaskStatus = (typeof TASK_STATUS_VALUES)[number];
 export type TaskBoardStatus = (typeof TASK_BOARD_STATUS_VALUES)[number];
 export type TeamMemberRole = (typeof TEAM_MEMBER_ROLE_VALUES)[number];
 export type TaskClaimState = (typeof TASK_CLAIM_STATE_VALUES)[number];
+export type BusMessageState = (typeof BUS_MESSAGE_STATE_VALUES)[number];
 
 export type TaskCreatedBy = string;
 
@@ -239,6 +247,151 @@ export type TaskClaimCreateInput = {
   leaseToken: string;
   leaseDurationMs: number;
   nowMs?: number;
+};
+
+export type TaskClaimLeaseInput = {
+  claimId: string;
+  agentId: string;
+  leaseToken: string;
+  leaseDurationMs: number;
+};
+
+export type TaskClaimLeaseResult = {
+  task: TaskRecord;
+  claim: TaskClaimRecord;
+};
+
+export type TaskClaimNextInput = {
+  agentId: string;
+  teamId?: string | null;
+  leaseDurationMs?: number;
+};
+
+export type TaskAttemptStartInput = {
+  taskId: string;
+  claimId: string;
+  agentId: string;
+  leaseToken: string;
+  teamId?: string | null;
+  sessionBackend?: string | null;
+  sessionId?: string | null;
+  summary?: string | null;
+};
+
+export type TaskAttemptStartResult = {
+  task: TaskRecord;
+  claim: TaskClaimRecord;
+  attempt: TaskAttemptRecord;
+};
+
+export type TaskAttemptFinishInput = {
+  taskId: string;
+  claimId: string;
+  attemptId: string;
+  agentId: string;
+  leaseToken: string;
+  summary?: string | null;
+  commandOutcome?: Record<string, unknown>;
+  testOutcome?: Record<string, unknown>;
+  changedFiles?: string[];
+  metrics?: Record<string, unknown>;
+  notes?: string | null;
+};
+
+export type TaskAttemptFinishResult = {
+  task: TaskRecord;
+  claim: TaskClaimRecord;
+  attempt: TaskAttemptRecord;
+};
+
+export type TaskAttemptFailInput = {
+  taskId: string;
+  claimId: string;
+  attemptId: string;
+  agentId: string;
+  leaseToken: string;
+  errorText?: string | null;
+  summary?: string | null;
+  commandOutcome?: Record<string, unknown>;
+  testOutcome?: Record<string, unknown>;
+  changedFiles?: string[];
+  metrics?: Record<string, unknown>;
+  notes?: string | null;
+};
+
+export type TaskAttemptFailResult = {
+  task: TaskRecord;
+  claim: TaskClaimRecord;
+  attempt: TaskAttemptRecord;
+  retryEligible: boolean;
+  remainingAttempts: number;
+};
+
+export type TaskRequeueInput = {
+  taskId: string;
+  assignedAgentId?: string | null;
+};
+
+export type TaskRequeueResult = {
+  task: TaskRecord;
+  previousStatus: TaskStatus;
+};
+
+export type BusMessageRecord = {
+  id: string;
+  senderAgentId: string;
+  receiverAgentId: string;
+  taskId: string | null;
+  messageType: string;
+  subject: string | null;
+  body: string;
+  payload: Record<string, unknown>;
+  dedupeKey: string | null;
+  state: BusMessageState;
+  deliveryCount: number;
+  maxDeliveries: number;
+  createdAtMs: number;
+  availableAtMs: number;
+  leasedAtMs: number | null;
+  leaseExpiresAtMs: number | null;
+  ackedAtMs: number | null;
+  expiresAtMs: number | null;
+};
+
+export type BusPublishInput = {
+  senderAgentId: string;
+  receiverAgentId: string;
+  taskId?: string | null;
+  messageType: string;
+  subject?: string | null;
+  body: string;
+  payload?: Record<string, unknown>;
+  dedupeKey?: string | null;
+  delayMs?: number;
+  ttlMs?: number;
+  maxDeliveries?: number;
+};
+
+export type BusPublishResult = {
+  messageId: string;
+  deduped: boolean;
+};
+
+export type BusPullInput = {
+  receiverAgentId: string;
+  maxMessages?: number;
+  visibilityTimeoutMs?: number;
+};
+
+export type BusDeliveryRecord = {
+  message: BusMessageRecord;
+  ackToken: string;
+};
+
+export type BusAckInput = {
+  receiverAgentId: string;
+  messageId: string;
+  ackToken: string;
 };
 
 export type TaskCreateInput = {

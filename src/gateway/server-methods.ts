@@ -3,6 +3,7 @@ import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
 import { browserHandlers } from "./server-methods/browser.js";
+import { busHandlers } from "./server-methods/bus.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { configHandlers } from "./server-methods/config.js";
@@ -20,6 +21,7 @@ import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { tasksHandlers } from "./server-methods/tasks.js";
+import { teamsHandlers } from "./server-methods/teams.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
@@ -72,6 +74,9 @@ const READ_METHODS = new Set([
   "projects.get",
   "tasks.list",
   "tasks.get",
+  "teams.list",
+  "teams.get",
+  "teams.getByName",
 ]);
 const WRITE_METHODS = new Set([
   "send",
@@ -178,6 +183,8 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...wizardHandlers,
   ...projectsHandlers,
   ...tasksHandlers,
+  ...teamsHandlers,
+  ...busHandlers,
 
   ...skillsHandlers,
   ...sessionsHandlers,

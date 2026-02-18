@@ -147,14 +147,14 @@ afterEach(async () => {
 });
 
 describe("task sqlite schema migration", () => {
-  it("migrates v1 DB to v2 without losing task/project data", async () => {
+  it("migrates v1 DB to latest schema without losing task/project data", async () => {
     const dbPath = await createTempDbPath();
     createV1Fixture(dbPath);
 
     const db = openTaskDatabase({ dbPath });
     initializeTaskSchema(db);
 
-    expect(getTaskSchemaVersion(db)).toBe(2);
+    expect(getTaskSchemaVersion(db)).toBe(3);
 
     const projectCount = db.prepare(`SELECT COUNT(*) as count FROM projects`).get() as {
       count: number;
@@ -254,6 +254,13 @@ describe("task sqlite schema migration", () => {
       )
       .get() as { name?: string } | undefined;
     expect(claimTable?.name).toBe("task_claims");
+
+    const busTable = db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_bus_messages' LIMIT 1`,
+      )
+      .get() as { name?: string } | undefined;
+    expect(busTable?.name).toBe("task_bus_messages");
 
     db.close();
   });

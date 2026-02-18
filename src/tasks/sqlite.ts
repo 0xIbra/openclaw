@@ -7,7 +7,7 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 
 export type TaskDatabase = DatabaseSync;
 
-export const TASK_SCHEMA_VERSION = 2;
+export const TASK_SCHEMA_VERSION = 3;
 
 function tableExists(db: TaskDatabase, tableName: string): boolean {
   const row = db
@@ -440,6 +440,60 @@ function migrateTaskSchemaV1ToV2(db: TaskDatabase): void {
   }
 }
 
+function migrateTaskSchemaV2ToV3(db: TaskDatabase): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS task_bus_messages (
+        id TEXT PRIMARY KEY,
+        sender_agent_id TEXT NOT NULL,
+        receiver_agent_id TEXT NOT NULL,
+        task_id TEXT,
+        message_type TEXT NOT NULL,
+        subject TEXT,
+        body TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        dedupe_key TEXT,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'leased', 'acked', 'expired', 'dead_letter')),
+        delivery_count INTEGER NOT NULL DEFAULT 0,
+        max_deliveries INTEGER NOT NULL DEFAULT 20,
+        created_at_ms INTEGER NOT NULL,
+        available_at_ms INTEGER NOT NULL,
+        leased_at_ms INTEGER,
+        lease_expires_at_ms INTEGER,
+        acked_at_ms INTEGER,
+        expires_at_ms INTEGER,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_bus_receiver_state_available
+        ON task_bus_messages(receiver_agent_id, state, available_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_bus_state_lease_expires
+        ON task_bus_messages(state, lease_expires_at_ms);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_bus_receiver_dedupe_active
+        ON task_bus_messages(receiver_agent_id, dedupe_key)
+        WHERE dedupe_key IS NOT NULL AND state != 'expired';
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_assignee_status_priority_updated
+        ON tasks(assigned_agent_id, status, priority, updated_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_claims_agent_state_lease_expiry
+        ON task_claims(agent_id, state, lease_expires_at_ms);
+
+      CREATE INDEX IF NOT EXISTS idx_task_attempts_task_attempt_number
+        ON task_attempts(task_id, attempt_number DESC);
+    `);
+
+    setTaskSchemaVersion(db, 3);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function initializeTaskSchema(db: TaskDatabase): void {
   db.exec("PRAGMA foreign_keys = ON;");
   initializeBaseSchema(db);
@@ -452,6 +506,9 @@ export function initializeTaskSchema(db: TaskDatabase): void {
   const effectiveVersion = getTaskSchemaVersion(db);
   if (effectiveVersion < 2) {
     migrateTaskSchemaV1ToV2(db);
+  }
+  if (getTaskSchemaVersion(db) < 3) {
+    migrateTaskSchemaV2ToV3(db);
   }
 
   if (getTaskSchemaVersion(db) < TASK_SCHEMA_VERSION) {
