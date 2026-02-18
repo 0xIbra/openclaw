@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { OutboundDeliveryJson } from "./format.js";
+import { discordPlugin } from "../../../extensions/discord/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
-import { whatsappPlugin } from "../../../extensions/whatsapp/src/channel.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createTestRegistry } from "../../test-utils/channel-plugins.js";
 import {
@@ -509,8 +509,8 @@ describe("formatOutboundDeliverySummary", () => {
     expect(formatOutboundDeliverySummary("telegram")).toBe(
       "✅ Sent via Telegram. Message ID: unknown",
     );
-    expect(formatOutboundDeliverySummary("imessage")).toBe(
-      "✅ Sent via iMessage. Message ID: unknown",
+    expect(formatOutboundDeliverySummary("discord")).toBe(
+      "✅ Sent via Discord. Message ID: unknown",
     );
   });
 
@@ -552,45 +552,28 @@ describe("buildOutboundDeliveryJson", () => {
     });
   });
 
-  it("supports whatsapp metadata when present", () => {
+  it("supports discord metadata when present", () => {
     expect(
       buildOutboundDeliveryJson({
-        channel: "whatsapp",
-        to: "+1",
-        result: { channel: "whatsapp", messageId: "w1", toJid: "jid" },
+        channel: "discord",
+        to: "channel:123",
+        result: { channel: "discord", messageId: "d1", channelId: "123" },
       }),
     ).toEqual({
-      channel: "whatsapp",
+      channel: "discord",
       via: "direct",
-      to: "+1",
-      messageId: "w1",
+      to: "channel:123",
+      messageId: "d1",
       mediaUrl: null,
-      toJid: "jid",
-    });
-  });
-
-  it("keeps timestamp for signal", () => {
-    expect(
-      buildOutboundDeliveryJson({
-        channel: "signal",
-        to: "+1",
-        result: { channel: "signal", messageId: "s1", timestamp: 123 },
-      }),
-    ).toEqual({
-      channel: "signal",
-      via: "direct",
-      to: "+1",
-      messageId: "s1",
-      mediaUrl: null,
-      timestamp: 123,
+      channelId: "123",
     });
   });
 });
 
 describe("formatGatewaySummary", () => {
   it("formats gateway summaries with channel", () => {
-    expect(formatGatewaySummary({ channel: "whatsapp", messageId: "m1" })).toBe(
-      "✅ Sent via gateway (whatsapp). Message ID: m1",
+    expect(formatGatewaySummary({ channel: "telegram", messageId: "m1" })).toBe(
+      "✅ Sent via gateway (telegram). Message ID: m1",
     );
   });
 
@@ -605,15 +588,6 @@ describe("formatGatewaySummary", () => {
   });
 });
 
-const slackConfig = {
-  channels: {
-    slack: {
-      botToken: "xoxb-test",
-      appToken: "xapp-test",
-    },
-  },
-} as OpenClawConfig;
-
 const discordConfig = {
   channels: {
     discord: {},
@@ -624,18 +598,18 @@ describe("outbound policy", () => {
   it("blocks cross-provider sends by default", () => {
     expect(() =>
       enforceCrossContextPolicy({
-        cfg: slackConfig,
+        cfg: discordConfig,
         channel: "telegram",
         action: "send",
         args: { to: "telegram:@ops" },
-        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+        toolContext: { currentChannelId: "123456", currentChannelProvider: "discord" },
       }),
     ).toThrow(/Cross-context messaging denied/);
   });
 
   it("allows cross-provider sends when enabled", () => {
     const cfg = {
-      ...slackConfig,
+      ...discordConfig,
       tools: {
         message: { crossContext: { allowAcrossProviders: true } },
       },
@@ -647,24 +621,24 @@ describe("outbound policy", () => {
         channel: "telegram",
         action: "send",
         args: { to: "telegram:@ops" },
-        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+        toolContext: { currentChannelId: "123456", currentChannelProvider: "discord" },
       }),
     ).not.toThrow();
   });
 
   it("blocks same-provider cross-context when disabled", () => {
     const cfg = {
-      ...slackConfig,
+      ...discordConfig,
       tools: { message: { crossContext: { allowWithinProvider: false } } },
     } as OpenClawConfig;
 
     expect(() =>
       enforceCrossContextPolicy({
         cfg,
-        channel: "slack",
+        channel: "discord",
         action: "send",
-        args: { to: "C99999999" },
-        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+        args: { to: "999999" },
+        toolContext: { currentChannelId: "123456", currentChannelProvider: "discord" },
       }),
     ).toThrow(/Cross-context messaging denied/);
   });
@@ -674,7 +648,7 @@ describe("outbound policy", () => {
       cfg: discordConfig,
       channel: "discord",
       target: "123",
-      toolContext: { currentChannelId: "C12345678", currentChannelProvider: "discord" },
+      toolContext: { currentChannelId: "123456", currentChannelProvider: "discord" },
     });
 
     expect(decoration).not.toBeNull();
@@ -693,21 +667,6 @@ describe("outbound policy", () => {
 
 describe("resolveOutboundSessionRoute", () => {
   const baseConfig = {} as OpenClawConfig;
-
-  it("builds Slack thread session keys", async () => {
-    const route = await resolveOutboundSessionRoute({
-      cfg: baseConfig,
-      channel: "slack",
-      agentId: "main",
-      target: "channel:C123",
-      replyToId: "456",
-    });
-
-    expect(route?.sessionKey).toBe("agent:main:slack:channel:c123:thread:456");
-    expect(route?.from).toBe("slack:channel:C123");
-    expect(route?.to).toBe("channel:C123");
-    expect(route?.threadId).toBe("456");
-  });
 
   it("uses Telegram topic ids in group session keys", async () => {
     const route = await resolveOutboundSessionRoute({
@@ -754,53 +713,6 @@ describe("resolveOutboundSessionRoute", () => {
     });
 
     expect(route?.sessionKey).toBe("agent:main:direct:alice");
-  });
-
-  it("strips chat_* prefixes for BlueBubbles group session keys", async () => {
-    const route = await resolveOutboundSessionRoute({
-      cfg: baseConfig,
-      channel: "bluebubbles",
-      agentId: "main",
-      target: "chat_guid:ABC123",
-    });
-
-    expect(route?.sessionKey).toBe("agent:main:bluebubbles:group:abc123");
-    expect(route?.from).toBe("group:ABC123");
-  });
-
-  it("treats Zalo Personal DM targets as direct sessions", async () => {
-    const cfg = { session: { dmScope: "per-channel-peer" } } as OpenClawConfig;
-    const route = await resolveOutboundSessionRoute({
-      cfg,
-      channel: "zalouser",
-      agentId: "main",
-      target: "123456",
-    });
-
-    expect(route?.sessionKey).toBe("agent:main:zalouser:direct:123456");
-    expect(route?.chatType).toBe("direct");
-  });
-
-  it("uses group session keys for Slack mpim allowlist entries", async () => {
-    const cfg = {
-      channels: {
-        slack: {
-          dm: {
-            groupChannels: ["G123"],
-          },
-        },
-      },
-    } as OpenClawConfig;
-
-    const route = await resolveOutboundSessionRoute({
-      cfg,
-      channel: "slack",
-      agentId: "main",
-      target: "channel:G123",
-    });
-
-    expect(route?.sessionKey).toBe("agent:main:slack:group:g123");
-    expect(route?.from).toBe("slack:group:G123");
   });
 });
 
@@ -879,90 +791,14 @@ describe("resolveOutboundTarget", () => {
   beforeEach(() => {
     setActivePluginRegistry(
       createTestRegistry([
-        { pluginId: "whatsapp", plugin: whatsappPlugin, source: "test" },
         { pluginId: "telegram", plugin: telegramPlugin, source: "test" },
+        { pluginId: "discord", plugin: discordPlugin, source: "test" },
       ]),
     );
   });
 
   afterEach(() => {
     setActivePluginRegistry(createTestRegistry());
-  });
-
-  it("rejects whatsapp with empty target even when allowFrom configured", () => {
-    const cfg: OpenClawConfig = {
-      channels: { whatsapp: { allowFrom: ["+1555"] } },
-    };
-    const res = resolveOutboundTarget({
-      channel: "whatsapp",
-      to: "",
-      cfg,
-      mode: "explicit",
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error.message).toContain("WhatsApp");
-    }
-  });
-
-  it.each([
-    {
-      name: "normalizes whatsapp target when provided",
-      input: { channel: "whatsapp" as const, to: " (555) 123-4567 " },
-      expected: { ok: true as const, to: "+5551234567" },
-    },
-    {
-      name: "keeps whatsapp group targets",
-      input: { channel: "whatsapp" as const, to: "120363401234567890@g.us" },
-      expected: { ok: true as const, to: "120363401234567890@g.us" },
-    },
-    {
-      name: "normalizes prefixed/uppercase whatsapp group targets",
-      input: {
-        channel: "whatsapp" as const,
-        to: " WhatsApp:120363401234567890@G.US ",
-      },
-      expected: { ok: true as const, to: "120363401234567890@g.us" },
-    },
-    {
-      name: "rejects whatsapp with empty target and allowFrom (no silent fallback)",
-      input: { channel: "whatsapp" as const, to: "", allowFrom: ["+1555"] },
-      expectedErrorIncludes: "WhatsApp",
-    },
-    {
-      name: "rejects whatsapp with empty target and prefixed allowFrom (no silent fallback)",
-      input: {
-        channel: "whatsapp" as const,
-        to: "",
-        allowFrom: ["whatsapp:(555) 123-4567"],
-      },
-      expectedErrorIncludes: "WhatsApp",
-    },
-    {
-      name: "rejects invalid whatsapp target",
-      input: { channel: "whatsapp" as const, to: "wat" },
-      expectedErrorIncludes: "WhatsApp",
-    },
-    {
-      name: "rejects whatsapp without to when allowFrom missing",
-      input: { channel: "whatsapp" as const, to: " " },
-      expectedErrorIncludes: "WhatsApp",
-    },
-    {
-      name: "rejects whatsapp allowFrom fallback when invalid",
-      input: { channel: "whatsapp" as const, to: "", allowFrom: ["wat"] },
-      expectedErrorIncludes: "WhatsApp",
-    },
-  ])("$name", ({ input, expected, expectedErrorIncludes }) => {
-    const res = resolveOutboundTarget(input);
-    if (expected) {
-      expect(res).toEqual(expected);
-      return;
-    }
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error.message).toContain(expectedErrorIncludes);
-    }
   });
 
   it("rejects telegram with missing target", () => {
@@ -973,11 +809,19 @@ describe("resolveOutboundTarget", () => {
     }
   });
 
-  it("rejects webchat delivery", () => {
-    const res = resolveOutboundTarget({ channel: "webchat", to: "x" });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error.message).toContain("WebChat");
+  it("resolves telegram target", () => {
+    const res = resolveOutboundTarget({ channel: "telegram", to: "123456" });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.to).toBe("123456");
+    }
+  });
+
+  it("resolves discord target", () => {
+    const res = resolveOutboundTarget({ channel: "discord", to: "channel:123" });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.to).toBe("channel:123");
     }
   });
 });
@@ -988,21 +832,21 @@ describe("resolveSessionDeliveryTarget", () => {
       entry: {
         sessionId: "sess-1",
         updatedAt: 1,
-        lastChannel: " whatsapp ",
-        lastTo: " +1555 ",
+        lastChannel: " telegram ",
+        lastTo: " 12345 ",
         lastAccountId: " acct-1 ",
       },
       requestedChannel: "last",
     });
 
     expect(resolved).toEqual({
-      channel: "whatsapp",
-      to: "+1555",
+      channel: "telegram",
+      to: "12345",
       accountId: "acct-1",
       threadId: undefined,
       mode: "implicit",
-      lastChannel: "whatsapp",
-      lastTo: "+1555",
+      lastChannel: "telegram",
+      lastTo: "12345",
       lastAccountId: "acct-1",
       lastThreadId: undefined,
     });
@@ -1013,20 +857,20 @@ describe("resolveSessionDeliveryTarget", () => {
       entry: {
         sessionId: "sess-2",
         updatedAt: 1,
-        lastChannel: "whatsapp",
-        lastTo: "+1555",
+        lastChannel: "telegram",
+        lastTo: "12345",
       },
-      requestedChannel: "telegram",
+      requestedChannel: "discord",
     });
 
     expect(resolved).toEqual({
-      channel: "telegram",
+      channel: "discord",
       to: undefined,
       accountId: undefined,
       threadId: undefined,
       mode: "implicit",
-      lastChannel: "whatsapp",
-      lastTo: "+1555",
+      lastChannel: "telegram",
+      lastTo: "12345",
       lastAccountId: undefined,
       lastThreadId: undefined,
     });
@@ -1037,21 +881,21 @@ describe("resolveSessionDeliveryTarget", () => {
       entry: {
         sessionId: "sess-3",
         updatedAt: 1,
-        lastChannel: "whatsapp",
-        lastTo: "+1555",
+        lastChannel: "telegram",
+        lastTo: "12345",
       },
-      requestedChannel: "telegram",
+      requestedChannel: "discord",
       allowMismatchedLastTo: true,
     });
 
     expect(resolved).toEqual({
-      channel: "telegram",
-      to: "+1555",
+      channel: "discord",
+      to: "12345",
       accountId: undefined,
       threadId: undefined,
       mode: "implicit",
-      lastChannel: "whatsapp",
-      lastTo: "+1555",
+      lastChannel: "telegram",
+      lastTo: "12345",
       lastAccountId: undefined,
       lastThreadId: undefined,
     });
@@ -1062,21 +906,21 @@ describe("resolveSessionDeliveryTarget", () => {
       entry: {
         sessionId: "sess-4",
         updatedAt: 1,
-        lastChannel: "whatsapp",
-        lastTo: "+1555",
+        lastChannel: "telegram",
+        lastTo: "12345",
       },
       requestedChannel: "webchat",
-      fallbackChannel: "slack",
+      fallbackChannel: "discord",
     });
 
     expect(resolved).toEqual({
-      channel: "slack",
+      channel: "discord",
       to: undefined,
       accountId: undefined,
       threadId: undefined,
       mode: "implicit",
-      lastChannel: "whatsapp",
-      lastTo: "+1555",
+      lastChannel: "telegram",
+      lastTo: "12345",
       lastAccountId: undefined,
       lastThreadId: undefined,
     });

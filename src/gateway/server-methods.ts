@@ -19,7 +19,6 @@ import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
-import { ttsHandlers } from "./server-methods/tts.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
 import { voicewakeHandlers } from "./server-methods/voicewake.js";
@@ -44,11 +43,6 @@ const PAIRING_METHODS = new Set([
   "node.pair.approve",
   "node.pair.reject",
   "node.pair.verify",
-  "device.pair.list",
-  "device.pair.approve",
-  "device.pair.reject",
-  "device.token.rotate",
-  "device.token.revoke",
   "node.rename",
 ]);
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
@@ -59,8 +53,6 @@ const READ_METHODS = new Set([
   "status",
   "usage.status",
   "usage.cost",
-  "tts.status",
-  "tts.providers",
   "models.list",
   "agents.list",
   "agent.identity.get",
@@ -85,10 +77,6 @@ const WRITE_METHODS = new Set([
   "agent.wait",
   "wake",
   "talk.mode",
-  "tts.enable",
-  "tts.disable",
-  "tts.convert",
-  "tts.setProvider",
   "voicewake.set",
   "node.invoke",
   "chat.send",
@@ -183,7 +171,6 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...configHandlers,
   ...wizardHandlers,
   ...talkHandlers,
-  ...ttsHandlers,
   ...skillsHandlers,
   ...sessionsHandlers,
   ...systemHandlers,

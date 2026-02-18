@@ -35,15 +35,10 @@ import { dispatchReplyWithDispatcher } from "../../auto-reply/reply/provider-dis
 import { resolveCommandAuthorizedFromAuthorizers } from "../../channels/command-gating.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
-import { buildPairingReply } from "../../pairing/pairing-messages.js";
-import {
-  readChannelAllowFromStore,
-  upsertChannelPairingRequest,
-} from "../../pairing/pairing-store.js";
+import { loadWebMedia } from "../../media/web-media.js";
 import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { buildUntrustedChannelMetadata } from "../../security/channel-metadata.js";
 import { chunkItems } from "../../utils/chunk-items.js";
-import { loadWebMedia } from "../../web/media.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import {
   allowListMatches,
@@ -614,10 +609,8 @@ async function dispatchDiscordCommandInteraction(params: {
       return;
     }
     if (dmPolicy !== "open") {
-      const storeAllowFrom = await readChannelAllowFromStore("discord").catch(() => []);
       const effectiveAllowFrom = [
         ...(discordConfig?.allowFrom ?? discordConfig?.dm?.allowFrom ?? []),
-        ...storeAllowFrom,
       ];
       const allowList = normalizeDiscordAllowList(effectiveAllowFrom, ["discord:", "user:", "pk:"]);
       const permitted = allowList
@@ -630,24 +623,7 @@ async function dispatchDiscordCommandInteraction(params: {
       if (!permitted) {
         commandAuthorized = false;
         if (dmPolicy === "pairing") {
-          const { code, created } = await upsertChannelPairingRequest({
-            channel: "discord",
-            id: user.id,
-            meta: {
-              tag: sender.tag,
-              name: sender.name,
-            },
-          });
-          if (created) {
-            await respond(
-              buildPairingReply({
-                channel: "discord",
-                idLine: `Your Discord user id: ${user.id}`,
-                code,
-              }),
-              { ephemeral: true },
-            );
-          }
+          await respond("Pairing is not available.", { ephemeral: true });
         } else {
           await respond("You are not authorized to use this command.", { ephemeral: true });
         }

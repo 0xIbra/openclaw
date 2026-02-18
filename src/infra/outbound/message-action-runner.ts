@@ -35,7 +35,6 @@ import {
   parseButtonsParam,
   parseCardParam,
   readBooleanParam,
-  resolveSlackAutoThreadId,
   resolveTelegramAutoThreadId,
 } from "./message-action-params.js";
 import { actionHasTarget, actionRequiresTarget } from "./message-action-spec.js";
@@ -66,19 +65,14 @@ function resolveAndApplyOutboundThreadId(
     channel: ChannelId;
     to: string;
     toolContext?: ChannelThreadingToolContext;
-    allowSlackAutoThread: boolean;
   },
 ): string | undefined {
   const threadId = readStringParam(params, "threadId");
-  const slackAutoThreadId =
-    ctx.allowSlackAutoThread && ctx.channel === "slack" && !threadId
-      ? resolveSlackAutoThreadId({ to: ctx.to, toolContext: ctx.toolContext })
-      : undefined;
   const telegramAutoThreadId =
     ctx.channel === "telegram" && !threadId
       ? resolveTelegramAutoThreadId({ to: ctx.to, toolContext: ctx.toolContext })
       : undefined;
-  const resolved = threadId ?? slackAutoThreadId ?? telegramAutoThreadId;
+  const resolved = threadId ?? telegramAutoThreadId;
   // Write auto-resolved threadId back into params so downstream dispatch
   // (plugin `readStringParam(params, "threadId")`) picks it up.
   if (resolved && !params.threadId) {
@@ -478,7 +472,6 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
     channel,
     to,
     toolContext: input.toolContext,
-    allowSlackAutoThread: channel === "slack" && !replyToId,
   });
   const outboundRoute =
     agentId && !dryRun
@@ -596,7 +589,6 @@ async function handlePollAction(ctx: ResolvedActionContext): Promise<MessageActi
     channel,
     to,
     toolContext: input.toolContext,
-    allowSlackAutoThread: channel === "slack",
   });
 
   const base = typeof params.message === "string" ? params.message : "";

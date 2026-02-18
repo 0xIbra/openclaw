@@ -4,28 +4,20 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import type { DiscordProbe } from "../../discord/probe.js";
 import type { DiscordTokenResolution } from "../../discord/token.js";
-import type { IMessageProbe } from "../../imessage/probe.js";
-import type { LineProbeResult } from "../../line/types.js";
 import type { PluginRegistry } from "../../plugins/registry.js";
-import type { SignalProbe } from "../../signal/probe.js";
-import type { SlackProbe } from "../../slack/probe.js";
 import type { TelegramProbe } from "../../telegram/probe.js";
 import type { TelegramTokenResolution } from "../../telegram/token.js";
 import type { ChannelOutboundAdapter, ChannelPlugin } from "./types.js";
 import type { BaseProbeResult, BaseTokenResolution } from "./types.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createTestRegistry } from "../../test-utils/channel-plugins.js";
-import { getChannelPluginCatalogEntry, listChannelPluginCatalogEntries } from "./catalog.js";
+import { listChannelPluginCatalogEntries } from "./catalog.js";
 import { resolveChannelConfigWrites } from "./config-writes.js";
 import {
   listDiscordDirectoryGroupsFromConfig,
   listDiscordDirectoryPeersFromConfig,
-  listSlackDirectoryGroupsFromConfig,
-  listSlackDirectoryPeersFromConfig,
   listTelegramDirectoryGroupsFromConfig,
   listTelegramDirectoryPeersFromConfig,
-  listWhatsAppDirectoryGroupsFromConfig,
-  listWhatsAppDirectoryPeersFromConfig,
 } from "./directory-config.js";
 import { listChannelPlugins } from "./index.js";
 import { loadChannelPlugin } from "./load.js";
@@ -60,7 +52,7 @@ describe("channel plugin registry", () => {
 
   it("sorts channel plugins by configured order", () => {
     const registry = createTestRegistry(
-      ["slack", "telegram", "signal"].map((id) => ({
+      ["discord", "telegram"].map((id) => ({
         pluginId: id,
         plugin: createPlugin(id),
         source: "test",
@@ -68,22 +60,11 @@ describe("channel plugin registry", () => {
     );
     setActivePluginRegistry(registry);
     const pluginIds = listChannelPlugins().map((plugin) => plugin.id);
-    expect(pluginIds).toEqual(["telegram", "slack", "signal"]);
+    expect(pluginIds).toEqual(["telegram", "discord"]);
   });
 });
 
 describe("channel plugin catalog", () => {
-  it("includes Microsoft Teams", () => {
-    const entry = getChannelPluginCatalogEntry("msteams");
-    expect(entry?.install.npmSpec).toBe("@openclaw/msteams");
-    expect(entry?.meta.aliases).toContain("teams");
-  });
-
-  it("lists plugin catalog entries", () => {
-    const ids = listChannelPluginCatalogEntries().map((entry) => entry.id);
-    expect(ids).toContain("msteams");
-  });
-
   it("includes external catalog entries", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-catalog-"));
     const catalogPath = path.join(dir, "catalog.json");
@@ -121,6 +102,8 @@ describe("channel plugin catalog", () => {
 const createRegistry = (channels: PluginRegistry["channels"]): PluginRegistry => ({
   plugins: [],
   tools: [],
+  hooks: [],
+  typedHooks: [],
   channels,
   providers: [],
   gatewayHandlers: {},
@@ -128,37 +111,37 @@ const createRegistry = (channels: PluginRegistry["channels"]): PluginRegistry =>
   httpRoutes: [],
   cliRegistrars: [],
   services: [],
+  commands: [],
   diagnostics: [],
 });
 
 const emptyRegistry = createRegistry([]);
 
-const msteamsOutbound: ChannelOutboundAdapter = {
+const testOutbound: ChannelOutboundAdapter = {
   deliveryMode: "direct",
-  sendText: async () => ({ channel: "msteams", messageId: "m1" }),
-  sendMedia: async () => ({ channel: "msteams", messageId: "m2" }),
+  sendText: async () => ({ channel: "test-channel", messageId: "m1" }),
+  sendMedia: async () => ({ channel: "test-channel", messageId: "m2" }),
 };
 
-const msteamsPlugin: ChannelPlugin = {
-  id: "msteams",
+const testPlugin: ChannelPlugin = {
+  id: "test-channel",
   meta: {
-    id: "msteams",
-    label: "Microsoft Teams",
-    selectionLabel: "Microsoft Teams (Bot Framework)",
-    docsPath: "/channels/msteams",
-    blurb: "Bot Framework; enterprise support.",
-    aliases: ["teams"],
+    id: "test-channel",
+    label: "Test Channel",
+    selectionLabel: "Test Channel",
+    docsPath: "/channels/test-channel",
+    blurb: "Test channel plugin.",
   },
   capabilities: { chatTypes: ["direct"] },
   config: {
     listAccountIds: () => [],
     resolveAccount: () => ({}),
   },
-  outbound: msteamsOutbound,
+  outbound: testOutbound,
 };
 
-const registryWithMSTeams = createRegistry([
-  { pluginId: "msteams", plugin: msteamsPlugin, source: "test" },
+const registryWithTestPlugin = createRegistry([
+  { pluginId: "test-channel", plugin: testPlugin, source: "test" },
 ]);
 
 describe("channel plugin loader", () => {
@@ -171,15 +154,15 @@ describe("channel plugin loader", () => {
   });
 
   it("loads channel plugins from the active registry", async () => {
-    setActivePluginRegistry(registryWithMSTeams);
-    const plugin = await loadChannelPlugin("msteams");
-    expect(plugin).toBe(msteamsPlugin);
+    setActivePluginRegistry(registryWithTestPlugin);
+    const plugin = await loadChannelPlugin("test-channel");
+    expect(plugin).toBe(testPlugin);
   });
 
   it("loads outbound adapters from registered plugins", async () => {
-    setActivePluginRegistry(registryWithMSTeams);
-    const outbound = await loadChannelOutboundAdapter("msteams");
-    expect(outbound).toBe(msteamsOutbound);
+    setActivePluginRegistry(registryWithTestPlugin);
+    const outbound = await loadChannelOutboundAdapter("test-channel");
+    expect(outbound).toBe(testOutbound);
   });
 });
 
@@ -190,22 +173,6 @@ describe("BaseProbeResult assignability", () => {
 
   it("DiscordProbe satisfies BaseProbeResult", () => {
     expectTypeOf<DiscordProbe>().toMatchTypeOf<BaseProbeResult>();
-  });
-
-  it("SlackProbe satisfies BaseProbeResult", () => {
-    expectTypeOf<SlackProbe>().toMatchTypeOf<BaseProbeResult>();
-  });
-
-  it("SignalProbe satisfies BaseProbeResult", () => {
-    expectTypeOf<SignalProbe>().toMatchTypeOf<BaseProbeResult>();
-  });
-
-  it("IMessageProbe satisfies BaseProbeResult", () => {
-    expectTypeOf<IMessageProbe>().toMatchTypeOf<BaseProbeResult>();
-  });
-
-  it("LineProbeResult satisfies BaseProbeResult", () => {
-    expectTypeOf<LineProbeResult>().toMatchTypeOf<BaseProbeResult>();
   });
 });
 
@@ -222,18 +189,18 @@ describe("BaseTokenResolution assignability", () => {
 describe("resolveChannelConfigWrites", () => {
   it("defaults to allow when unset", () => {
     const cfg = {};
-    expect(resolveChannelConfigWrites({ cfg, channelId: "slack" })).toBe(true);
+    expect(resolveChannelConfigWrites({ cfg, channelId: "telegram" })).toBe(true);
   });
 
   it("blocks when channel config disables writes", () => {
-    const cfg = { channels: { slack: { configWrites: false } } };
-    expect(resolveChannelConfigWrites({ cfg, channelId: "slack" })).toBe(false);
+    const cfg = { channels: { telegram: { configWrites: false } } };
+    expect(resolveChannelConfigWrites({ cfg, channelId: "telegram" })).toBe(false);
   });
 
   it("account override wins over channel default", () => {
     const cfg = {
       channels: {
-        slack: {
+        telegram: {
           configWrites: true,
           accounts: {
             work: { configWrites: false },
@@ -241,13 +208,15 @@ describe("resolveChannelConfigWrites", () => {
         },
       },
     };
-    expect(resolveChannelConfigWrites({ cfg, channelId: "slack", accountId: "work" })).toBe(false);
+    expect(resolveChannelConfigWrites({ cfg, channelId: "telegram", accountId: "work" })).toBe(
+      false,
+    );
   });
 
   it("matches account ids case-insensitively", () => {
     const cfg = {
       channels: {
-        slack: {
+        telegram: {
           configWrites: true,
           accounts: {
             Work: { configWrites: false },
@@ -255,47 +224,13 @@ describe("resolveChannelConfigWrites", () => {
         },
       },
     };
-    expect(resolveChannelConfigWrites({ cfg, channelId: "slack", accountId: "work" })).toBe(false);
+    expect(resolveChannelConfigWrites({ cfg, channelId: "telegram", accountId: "work" })).toBe(
+      false,
+    );
   });
 });
 
 describe("directory (config-backed)", () => {
-  it("lists Slack peers/groups from config", async () => {
-    const cfg = {
-      channels: {
-        slack: {
-          botToken: "xoxb-test",
-          appToken: "xapp-test",
-          dm: { allowFrom: ["U123", "user:U999"] },
-          dms: { U234: {} },
-          channels: { C111: { users: ["U777"] } },
-        },
-      },
-      // oxlint-disable-next-line typescript/no-explicit-any
-    } as any;
-
-    const peers = await listSlackDirectoryPeersFromConfig({
-      cfg,
-      accountId: "default",
-      query: null,
-      limit: null,
-    });
-    expect(peers?.map((e) => e.id).toSorted()).toEqual([
-      "user:u123",
-      "user:u234",
-      "user:u777",
-      "user:u999",
-    ]);
-
-    const groups = await listSlackDirectoryGroupsFromConfig({
-      cfg,
-      accountId: "default",
-      query: null,
-      limit: null,
-    });
-    expect(groups?.map((e) => e.id)).toEqual(["channel:c111"]);
-  });
-
   it("lists Discord peers/groups from config (numeric ids only)", async () => {
     const cfg = {
       channels: {
@@ -363,33 +298,5 @@ describe("directory (config-backed)", () => {
       limit: null,
     });
     expect(groups?.map((e) => e.id)).toEqual(["-1001"]);
-  });
-
-  it("lists WhatsApp peers/groups from config", async () => {
-    const cfg = {
-      channels: {
-        whatsapp: {
-          allowFrom: ["+15550000000", "*", "123@g.us"],
-          groups: { "999@g.us": { requireMention: true }, "*": {} },
-        },
-      },
-      // oxlint-disable-next-line typescript/no-explicit-any
-    } as any;
-
-    const peers = await listWhatsAppDirectoryPeersFromConfig({
-      cfg,
-      accountId: "default",
-      query: null,
-      limit: null,
-    });
-    expect(peers?.map((e) => e.id)).toEqual(["+15550000000"]);
-
-    const groups = await listWhatsAppDirectoryGroupsFromConfig({
-      cfg,
-      accountId: "default",
-      query: null,
-      limit: null,
-    });
-    expect(groups?.map((e) => e.id)).toEqual(["999@g.us"]);
   });
 });

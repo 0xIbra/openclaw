@@ -1,10 +1,10 @@
 import type { IncomingMessage } from "node:http";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import type { ChannelPlugin } from "../channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { discordPlugin } from "../../extensions/discord/src/channel.js";
+import { telegramPlugin } from "../../extensions/telegram/src/channel.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
-import { createIMessageTestPlugin } from "../test-utils/imessage-test-plugin.js";
 import {
   extractHookToken,
   isHookAgentAllowed,
@@ -110,38 +110,22 @@ describe("gateway hooks helpers", () => {
       expect(explicitNoDeliver.value.deliver).toBe(false);
     }
 
-    setActivePluginRegistry(
-      createTestRegistry([
-        {
-          pluginId: "imessage",
-          source: "test",
-          plugin: createIMessageTestPlugin(),
-        },
-      ]),
-    );
-    const imsg = normalizeAgentPayload({ message: "yo", channel: "imsg" });
-    expect(imsg.ok).toBe(true);
-    if (imsg.ok) {
-      expect(imsg.value.channel).toBe("imessage");
+    setActivePluginRegistry(channelRegistry);
+    const tg = normalizeAgentPayload({ message: "yo", channel: "telegram" });
+    expect(tg.ok).toBe(true);
+    if (tg.ok) {
+      expect(tg.value.channel).toBe("telegram");
     }
 
-    setActivePluginRegistry(
-      createTestRegistry([
-        {
-          pluginId: "msteams",
-          source: "test",
-          plugin: createMSTeamsPlugin({ aliases: ["teams"] }),
-        },
-      ]),
-    );
-    const teams = normalizeAgentPayload({ message: "yo", channel: "teams" });
-    expect(teams.ok).toBe(true);
-    if (teams.ok) {
-      expect(teams.value.channel).toBe("msteams");
+    const disc = normalizeAgentPayload({ message: "yo", channel: "discord" });
+    expect(disc.ok).toBe(true);
+    if (disc.ok) {
+      expect(disc.value.channel).toBe("discord");
     }
 
     const bad = normalizeAgentPayload({ message: "yo", channel: "sms" });
     expect(bad.ok).toBe(false);
+    setActivePluginRegistry(emptyRegistry);
   });
 
   test("normalizeAgentPayload passes agentId", () => {
@@ -308,20 +292,7 @@ describe("gateway hooks helpers", () => {
 });
 
 const emptyRegistry = createTestRegistry([]);
-
-const createMSTeamsPlugin = (params: { aliases?: string[] }): ChannelPlugin => ({
-  id: "msteams",
-  meta: {
-    id: "msteams",
-    label: "Microsoft Teams",
-    selectionLabel: "Microsoft Teams (Bot Framework)",
-    docsPath: "/channels/msteams",
-    blurb: "Bot Framework; enterprise support.",
-    aliases: params.aliases,
-  },
-  capabilities: { chatTypes: ["direct"] },
-  config: {
-    listAccountIds: () => [],
-    resolveAccount: () => ({}),
-  },
-});
+const channelRegistry = createTestRegistry([
+  { pluginId: "telegram", plugin: telegramPlugin, source: "test" },
+  { pluginId: "discord", plugin: discordPlugin, source: "test" },
+]);

@@ -2,8 +2,8 @@ import type { ImageContent } from "@mariozechner/pi-ai";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SandboxFsBridge } from "../../sandbox/fs-bridge.js";
+import { loadWebMedia } from "../../../media/web-media.js";
 import { resolveUserPath } from "../../../utils.js";
-import { loadWebMedia } from "../../../web/media.js";
 import { sanitizeImageBlocks } from "../../tool-images.js";
 import { log } from "../logger.js";
 
@@ -212,7 +212,7 @@ export async function loadImageFromRef(
       ? await loadWebMedia(targetPath, {
           maxBytes: options.maxBytes,
           sandboxValidated: true,
-          readFile: (filePath) =>
+          readFile: (filePath: string) =>
             options.sandbox!.bridge.readFile({ filePath, cwd: options.sandbox!.root }),
         })
       : await loadWebMedia(targetPath, options?.maxBytes);

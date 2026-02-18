@@ -16,7 +16,7 @@ vi.mock("./commands.js", () => ({
 const { handleInlineActions } = await import("./get-reply-inline-actions.js");
 
 describe("handleInlineActions", () => {
-  it("skips whatsapp replies when config is empty and From !== To", async () => {
+  it("continues when config is empty and channel has no skipWhenConfigEmpty rule", async () => {
     handleCommandsMock.mockReset();
 
     const typing: TypingController = {
@@ -31,8 +31,8 @@ describe("handleInlineActions", () => {
     };
 
     const ctx = buildTestCtx({
-      From: "whatsapp:+999",
-      To: "whatsapp:+123",
+      From: "telegram:999",
+      To: "telegram:123",
       Body: "hi",
     });
 
@@ -48,18 +48,18 @@ describe("handleInlineActions", () => {
       allowTextCommands: false,
       inlineStatusRequested: false,
       command: {
-        surface: "whatsapp",
-        channel: "whatsapp",
-        channelId: "whatsapp",
+        surface: "telegram",
+        channel: "telegram",
+        channelId: "telegram",
         ownerList: [],
         senderIsOwner: false,
         isAuthorizedSender: false,
         senderId: undefined,
-        abortKey: "whatsapp:+999",
+        abortKey: "telegram:999",
         rawBodyNormalized: "hi",
         commandBodyNormalized: "hi",
-        from: "whatsapp:+999",
-        to: "whatsapp:+123",
+        from: "telegram:999",
+        to: "telegram:123",
       },
       directives: clearInlineDirectives("hi"),
       cleanedBody: "hi",
@@ -79,8 +79,11 @@ describe("handleInlineActions", () => {
       sessionScope: "per-sender",
     });
 
-    expect(result).toEqual({ kind: "reply", reply: undefined });
-    expect(typing.cleanup).toHaveBeenCalled();
-    expect(handleCommandsMock).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: "continue",
+      }),
+    );
+    expect(handleCommandsMock).toHaveBeenCalledTimes(1);
   });
 });

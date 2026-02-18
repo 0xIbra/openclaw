@@ -2,7 +2,6 @@ import type { Chat, Message, MessageOrigin, User } from "@grammyjs/types";
 import type { TelegramGroupConfig, TelegramTopicConfig } from "../../config/types.js";
 import type { TelegramStreamMode } from "./types.js";
 import { formatLocationText, type NormalizedLocation } from "../../channels/location.js";
-import { readChannelAllowFromStore } from "../../pairing/pairing-store.js";
 import {
   firstDefined,
   normalizeAllowFromWithStore,
@@ -39,11 +38,7 @@ export async function resolveTelegramGroupAllowFromContext(params: {
     isForum: params.isForum,
     messageThreadId: params.messageThreadId,
   });
-  const storeAllowFrom = await readChannelAllowFromStore(
-    "telegram",
-    process.env,
-    params.accountId,
-  ).catch(() => []);
+  const storeAllowFrom: string[] = [];
   const { groupConfig, topicConfig } = params.resolveTelegramGroupConfig(
     params.chatId,
     resolvedThreadId,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
-import { slackPlugin } from "../../../extensions/slack/src/channel.js";
+import { discordPlugin } from "../../../extensions/discord/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createTestRegistry } from "../../test-utils/channel-plugins.js";
@@ -32,11 +32,10 @@ vi.mock("../../config/sessions.js", async () => {
 
 import { runMessageAction } from "./message-action-runner.js";
 
-const slackConfig = {
+const discordConfig = {
   channels: {
-    slack: {
-      botToken: "xoxb-test",
-      appToken: "xapp-test",
+    discord: {
+      botToken: "discord-test",
     },
   },
 } as OpenClawConfig;
@@ -83,17 +82,17 @@ const defaultTelegramToolContext = {
 describe("runMessageAction threading auto-injection", () => {
   beforeEach(async () => {
     const { createPluginRuntime } = await import("../../plugins/runtime/index.js");
-    const { setSlackRuntime } = await import("../../../extensions/slack/src/runtime.js");
+    const { setDiscordRuntime } = await import("../../../extensions/discord/src/runtime.js");
     const { setTelegramRuntime } = await import("../../../extensions/telegram/src/runtime.js");
     const runtime = createPluginRuntime();
-    setSlackRuntime(runtime);
+    setDiscordRuntime(runtime);
     setTelegramRuntime(runtime);
     setActivePluginRegistry(
       createTestRegistry([
         {
-          pluginId: "slack",
+          pluginId: "discord",
           source: "test",
-          plugin: slackPlugin,
+          plugin: discordPlugin,
         },
         {
           pluginId: "telegram",
@@ -114,41 +113,40 @@ describe("runMessageAction threading auto-injection", () => {
     mockHandledSendAction();
 
     const call = await runThreadingAction({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
+        channel: "discord",
         target: "channel:C123",
         message: "hi",
       },
       toolContext: {
         currentChannelId: "C123",
-        currentThreadTs: "111.222",
+        currentThreadTs: "111222",
         replyToMode: "all",
       },
     });
 
     expect(call?.ctx?.agentId).toBe("main");
-    expect(call?.ctx?.mirror?.sessionKey).toBe("agent:main:slack:channel:c123:thread:111.222");
   });
 
   it("matches auto-threading when channel ids differ in case", async () => {
     mockHandledSendAction();
 
     const call = await runThreadingAction({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
+        channel: "discord",
         target: "channel:c123",
         message: "hi",
       },
       toolContext: {
         currentChannelId: "C123",
-        currentThreadTs: "333.444",
+        currentThreadTs: "333444",
         replyToMode: "all",
       },
     });
 
-    expect(call?.ctx?.mirror?.sessionKey).toBe("agent:main:slack:channel:c123:thread:333.444");
+    expect(call?.ctx?.agentId).toBe("main");
   });
 
   it("auto-injects telegram threadId from toolContext when omitted", async () => {

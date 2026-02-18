@@ -29,13 +29,13 @@ afterEach(() => {
 describe("resolveCommandAuthorization", () => {
   it("falls back from empty SenderId to SenderE164", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+123"] } },
+      channels: { telegram: { allowFrom: ["+123"] } },
     } as OpenClawConfig;
 
     const ctx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+999",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:+999",
       SenderId: "",
       SenderE164: "+123",
     } as MsgContext;
@@ -52,13 +52,13 @@ describe("resolveCommandAuthorization", () => {
 
   it("falls back from whitespace SenderId to SenderE164", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+123"] } },
+      channels: { telegram: { allowFrom: ["+123"] } },
     } as OpenClawConfig;
 
     const ctx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+999",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:+999",
       SenderId: "   ",
       SenderE164: "+123",
     } as MsgContext;
@@ -75,13 +75,13 @@ describe("resolveCommandAuthorization", () => {
 
   it("falls back to From when SenderId and SenderE164 are whitespace", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+999"] } },
+      channels: { telegram: { allowFrom: ["+999"] } },
     } as OpenClawConfig;
 
     const ctx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+999",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:+999",
       SenderId: "   ",
       SenderE164: "   ",
     } as MsgContext;
@@ -98,13 +98,13 @@ describe("resolveCommandAuthorization", () => {
 
   it("falls back from un-normalizable SenderId to SenderE164", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+123"] } },
+      channels: { telegram: { allowFrom: ["+123"] } },
     } as OpenClawConfig;
 
     const ctx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+999",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:+999",
       SenderId: "wat",
       SenderE164: "+123",
     } as MsgContext;
@@ -121,13 +121,13 @@ describe("resolveCommandAuthorization", () => {
 
   it("prefers SenderE164 when SenderId does not match allowFrom", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+41796666864"] } },
+      channels: { telegram: { allowFrom: ["+41796666864"] } },
     } as OpenClawConfig;
 
     const ctx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:120363401234567890@g.us",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:120363401234567890@g.us",
       SenderId: "123@lid",
       SenderE164: "+41796666864",
     } as MsgContext;
@@ -144,15 +144,15 @@ describe("resolveCommandAuthorization", () => {
 
   it("uses explicit owner allowlist when allowFrom is wildcard", () => {
     const cfg = {
-      commands: { ownerAllowFrom: ["whatsapp:+15551234567"] },
-      channels: { whatsapp: { allowFrom: ["*"] } },
+      commands: { ownerAllowFrom: ["telegram:12345"] },
+      channels: { telegram: { allowFrom: ["*"] } },
     } as OpenClawConfig;
 
     const ownerCtx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+15551234567",
-      SenderE164: "+15551234567",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:12345",
+      SenderId: "12345",
     } as MsgContext;
     const ownerAuth = resolveCommandAuthorization({
       ctx: ownerCtx,
@@ -163,10 +163,10 @@ describe("resolveCommandAuthorization", () => {
     expect(ownerAuth.isAuthorizedSender).toBe(true);
 
     const otherCtx = {
-      Provider: "whatsapp",
-      Surface: "whatsapp",
-      From: "whatsapp:+19995551234",
-      SenderE164: "+19995551234",
+      Provider: "telegram",
+      Surface: "telegram",
+      From: "telegram:99999",
+      SenderId: "99999",
     } as MsgContext;
     const otherAuth = resolveCommandAuthorization({
       ctx: otherCtx,
@@ -214,7 +214,7 @@ describe("resolveCommandAuthorization", () => {
 
   it("does not infer a provider from channel allowlists for webchat command contexts", () => {
     const cfg = {
-      channels: { whatsapp: { allowFrom: ["+15551234567"] } },
+      channels: { telegram: { allowFrom: ["+15551234567"] } },
     } as OpenClawConfig;
 
     const ctx = {
@@ -241,13 +241,13 @@ describe("resolveCommandAuthorization", () => {
           "*": ["user123"],
         },
       },
-      channels: { whatsapp: { allowFrom: ["+different"] } },
+      channels: { telegram: { allowFrom: ["+different"] } },
     } as OpenClawConfig;
 
-    function makeWhatsAppContext(senderId: string): MsgContext {
+    function makeTelegramContext(senderId: string): MsgContext {
       return {
-        Provider: "whatsapp",
-        Surface: "whatsapp",
+        Provider: "telegram",
+        Surface: "telegram",
         From: `whatsapp:${senderId}`,
         SenderId: senderId,
       } as MsgContext;
@@ -255,7 +255,7 @@ describe("resolveCommandAuthorization", () => {
 
     function resolveWithCommandsAllowFrom(senderId: string, commandAuthorized: boolean) {
       return resolveCommandAuthorization({
-        ctx: makeWhatsAppContext(senderId),
+        ctx: makeTelegramContext(senderId),
         cfg: commandsAllowFromConfig,
         commandAuthorized,
       });
@@ -286,17 +286,17 @@ describe("resolveCommandAuthorization", () => {
         commands: {
           allowFrom: {
             "*": ["globaluser"],
-            whatsapp: ["+15551234567"],
+            telegram: ["+15551234567"],
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
       } as OpenClawConfig;
 
-      // User in global list but not in whatsapp-specific list
+      // User in global list but not in telegram-specific list
       const globalUserCtx = {
-        Provider: "whatsapp",
-        Surface: "whatsapp",
-        From: "whatsapp:globaluser",
+        Provider: "telegram",
+        Surface: "telegram",
+        From: "telegram:globaluser",
         SenderId: "globaluser",
       } as MsgContext;
 
@@ -309,32 +309,32 @@ describe("resolveCommandAuthorization", () => {
       // Provider-specific list overrides global, so globaluser is not authorized
       expect(globalAuth.isAuthorizedSender).toBe(false);
 
-      // User in whatsapp-specific list
-      const whatsappUserCtx = {
-        Provider: "whatsapp",
-        Surface: "whatsapp",
-        From: "whatsapp:+15551234567",
+      // User in telegram-specific list
+      const telegramUserCtx = {
+        Provider: "telegram",
+        Surface: "telegram",
+        From: "telegram:+15551234567",
         SenderE164: "+15551234567",
       } as MsgContext;
 
-      const whatsappAuth = resolveCommandAuthorization({
-        ctx: whatsappUserCtx,
+      const telegramAuth = resolveCommandAuthorization({
+        ctx: telegramUserCtx,
         cfg,
         commandAuthorized: true,
       });
 
-      expect(whatsappAuth.isAuthorizedSender).toBe(true);
+      expect(telegramAuth.isAuthorizedSender).toBe(true);
     });
 
     it("falls back to channel allowFrom when commands.allowFrom not set", () => {
       const cfg = {
-        channels: { whatsapp: { allowFrom: ["+15551234567"] } },
+        channels: { telegram: { allowFrom: ["+15551234567"] } },
       } as OpenClawConfig;
 
       const authorizedCtx = {
-        Provider: "whatsapp",
-        Surface: "whatsapp",
-        From: "whatsapp:+15551234567",
+        Provider: "telegram",
+        Surface: "telegram",
+        From: "telegram:+15551234567",
         SenderE164: "+15551234567",
       } as MsgContext;
 
@@ -354,13 +354,13 @@ describe("resolveCommandAuthorization", () => {
             "*": ["*"],
           },
         },
-        channels: { whatsapp: { allowFrom: ["+specific"] } },
+        channels: { telegram: { allowFrom: ["+specific"] } },
       } as OpenClawConfig;
 
       const anyUserCtx = {
-        Provider: "whatsapp",
-        Surface: "whatsapp",
-        From: "whatsapp:anyuser",
+        Provider: "telegram",
+        Surface: "telegram",
+        From: "telegram:anyuser",
         SenderId: "anyuser",
       } as MsgContext;
 

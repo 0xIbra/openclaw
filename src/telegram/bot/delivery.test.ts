@@ -12,7 +12,7 @@ const baseDeliveryParams = {
 type DeliverRepliesParams = Parameters<typeof deliverReplies>[0];
 type RuntimeStub = { error: ReturnType<typeof vi.fn>; log?: ReturnType<typeof vi.fn> };
 
-vi.mock("../../web/media.js", () => ({
+vi.mock("../../media/web-media.js", () => ({
   loadWebMedia: (...args: unknown[]) => loadWebMedia(...args),
 }));
 

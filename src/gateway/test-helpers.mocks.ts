@@ -72,11 +72,6 @@ const createStubPluginRegistry = (): PluginRegistry => ({
   typedHooks: [],
   channels: [
     {
-      pluginId: "whatsapp",
-      source: "test",
-      plugin: createStubChannelPlugin({ id: "whatsapp", label: "WhatsApp" }),
-    },
-    {
       pluginId: "telegram",
       source: "test",
       plugin: createStubChannelPlugin({
@@ -89,25 +84,6 @@ const createStubPluginRegistry = (): PluginRegistry => ({
       pluginId: "discord",
       source: "test",
       plugin: createStubChannelPlugin({ id: "discord", label: "Discord" }),
-    },
-    {
-      pluginId: "slack",
-      source: "test",
-      plugin: createStubChannelPlugin({ id: "slack", label: "Slack" }),
-    },
-    {
-      pluginId: "signal",
-      source: "test",
-      plugin: createStubChannelPlugin({
-        id: "signal",
-        label: "Signal",
-        summary: { lastProbeAt: null },
-      }),
-    },
-    {
-      pluginId: "imessage",
-      source: "test",
-      plugin: createStubChannelPlugin({ id: "imessage", label: "iMessage" }),
     },
     {
       pluginId: "msteams",
@@ -170,7 +146,6 @@ const hoisted = vi.hoisted(() => ({
   },
   testTailscaleWhois: { value: null as TailscaleWhoisIdentity | null },
   getReplyFromConfig: vi.fn().mockResolvedValue(undefined),
-  sendWhatsAppMock: vi.fn().mockResolvedValue({ messageId: "msg-1", toJid: "jid-1" }),
 }));
 
 const pluginRegistryState = {
@@ -428,18 +403,6 @@ vi.mock("../config/config.js", async () => {
           ? { ...testState.channelsConfig }
           : {};
       const mergedChannels = { ...fileChannels, ...overrideChannels };
-      if (testState.allowFrom !== undefined) {
-        const existing =
-          mergedChannels.whatsapp &&
-          typeof mergedChannels.whatsapp === "object" &&
-          !Array.isArray(mergedChannels.whatsapp)
-            ? (mergedChannels.whatsapp as Record<string, unknown>)
-            : {};
-        mergedChannels.whatsapp = {
-          ...existing,
-          allowFrom: testState.allowFrom,
-        };
-      }
       const channels = Object.keys(mergedChannels).length > 0 ? mergedChannels : undefined;
 
       const fileSession =
@@ -555,22 +518,6 @@ vi.mock("../commands/health.js", () => ({
 vi.mock("../commands/status.js", () => ({
   getStatusSummary: vi.fn().mockResolvedValue({ ok: true }),
 }));
-vi.mock("../web/outbound.js", () => ({
-  sendMessageWhatsApp: (...args: unknown[]) =>
-    (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
-  sendPollWhatsApp: (...args: unknown[]) =>
-    (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
-}));
-vi.mock("../channels/web/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../channels/web/index.js")>(
-    "../channels/web/index.js",
-  );
-  return {
-    ...actual,
-    sendMessageWhatsApp: (...args: unknown[]) =>
-      (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
-  };
-});
 vi.mock("../commands/agent.js", () => ({
   agentCommand,
 }));
@@ -579,14 +526,9 @@ vi.mock("../auto-reply/reply.js", () => ({
 }));
 vi.mock("../cli/deps.js", async () => {
   const actual = await vi.importActual<typeof import("../cli/deps.js")>("../cli/deps.js");
-  const base = actual.createDefaultDeps();
   return {
     ...actual,
-    createDefaultDeps: () => ({
-      ...base,
-      sendMessageWhatsApp: (...args: unknown[]) =>
-        (hoisted.sendWhatsAppMock as (...args: unknown[]) => unknown)(...args),
-    }),
+    createDefaultDeps: () => actual.createDefaultDeps(),
   };
 });
 

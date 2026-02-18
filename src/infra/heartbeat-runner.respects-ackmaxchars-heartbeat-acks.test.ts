@@ -48,9 +48,9 @@ describe("resolveHeartbeatIntervalMs", () => {
     return sessionKey;
   }
 
-  function makeWhatsAppDeps(
+  function makeTelegramDeps(
     params: {
-      sendWhatsApp?: ReturnType<typeof vi.fn>;
+      sendTelegram?: ReturnType<typeof vi.fn>;
       getQueueSize?: () => number;
       nowMs?: () => number;
       webAuthExists?: () => Promise<boolean>;
@@ -58,7 +58,7 @@ describe("resolveHeartbeatIntervalMs", () => {
     } = {},
   ) {
     return {
-      ...(params.sendWhatsApp ? { sendWhatsApp: params.sendWhatsApp } : {}),
+      ...(params.sendTelegram ? { sendTelegram: params.sendTelegram } : {}),
       getQueueSize: params.getQueueSize ?? (() => 0),
       nowMs: params.nowMs ?? (() => 0),
       webAuthExists: params.webAuthExists ?? (async () => true),
@@ -152,30 +152,30 @@ describe("resolveHeartbeatIntervalMs", () => {
         storePath,
         heartbeat: {
           every: "5m",
-          target: "whatsapp",
+          target: "telegram",
           ackMaxChars: 0,
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
       });
 
       await seedMainSession(storePath, cfg, {
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
       replySpy.mockResolvedValue({ text: "HEARTBEAT_OK 🦞" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
 
       await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps({ sendWhatsApp }),
+        deps: makeTelegramDeps({ sendTelegram }),
       });
 
-      expect(sendWhatsApp).toHaveBeenCalled();
+      expect(sendTelegram).toHaveBeenCalled();
     });
   });
 
@@ -186,30 +186,30 @@ describe("resolveHeartbeatIntervalMs", () => {
         storePath,
         heartbeat: {
           every: "5m",
-          target: "whatsapp",
+          target: "telegram",
         },
-        channels: { whatsapp: { allowFrom: ["*"], heartbeat: { showOk: true } } },
+        channels: { telegram: { allowFrom: ["*"], heartbeat: { showOk: true } } },
       });
 
       await seedMainSession(storePath, cfg, {
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
       replySpy.mockResolvedValue({ text: "HEARTBEAT_OK" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
 
       await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps({ sendWhatsApp }),
+        deps: makeTelegramDeps({ sendTelegram }),
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "HEARTBEAT_OK", expect.any(Object));
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith("+1555", "HEARTBEAT_OK", expect.any(Object));
     });
   });
 
@@ -259,10 +259,10 @@ describe("resolveHeartbeatIntervalMs", () => {
         storePath,
         heartbeat: {
           every: "5m",
-          target: "whatsapp",
+          target: "telegram",
         },
         channels: {
-          whatsapp: {
+          telegram: {
             allowFrom: ["*"],
             heartbeat: { showOk: false, showAlerts: false, useIndicator: false },
           },
@@ -270,23 +270,23 @@ describe("resolveHeartbeatIntervalMs", () => {
       });
 
       await seedMainSession(storePath, cfg, {
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
 
       const result = await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps({ sendWhatsApp }),
+        deps: makeTelegramDeps({ sendTelegram }),
       });
 
       expect(replySpy).not.toHaveBeenCalled();
-      expect(sendWhatsApp).not.toHaveBeenCalled();
+      expect(sendTelegram).not.toHaveBeenCalled();
       expect(result).toEqual({ status: "skipped", reason: "alerts-disabled" });
     });
   });
@@ -298,29 +298,29 @@ describe("resolveHeartbeatIntervalMs", () => {
         storePath,
         heartbeat: {
           every: "5m",
-          target: "whatsapp",
+          target: "telegram",
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
       });
 
       await seedMainSession(storePath, cfg, {
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
       replySpy.mockResolvedValue({ text: "<b>HEARTBEAT_OK</b>" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
 
       await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps({ sendWhatsApp }),
+        deps: makeTelegramDeps({ sendTelegram }),
       });
 
-      expect(sendWhatsApp).not.toHaveBeenCalled();
+      expect(sendTelegram).not.toHaveBeenCalled();
     });
   });
 
@@ -333,15 +333,15 @@ describe("resolveHeartbeatIntervalMs", () => {
         storePath,
         heartbeat: {
           every: "5m",
-          target: "whatsapp",
+          target: "telegram",
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
       });
 
       const sessionKey = await seedMainSession(storePath, cfg, {
         updatedAt: originalUpdatedAt,
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
@@ -360,7 +360,7 @@ describe("resolveHeartbeatIntervalMs", () => {
 
       await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps(),
+        deps: makeTelegramDeps(),
       });
 
       const finalStore = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
@@ -371,38 +371,37 @@ describe("resolveHeartbeatIntervalMs", () => {
     });
   });
 
-  it("skips WhatsApp delivery when not linked or running", async () => {
+  it("continues Telegram delivery even when WhatsApp linkage checks fail", async () => {
     await withTempHeartbeatSandbox(async ({ tmpDir, storePath, replySpy }) => {
       const cfg = createHeartbeatConfig({
         tmpDir,
         storePath,
-        heartbeat: { every: "5m", target: "whatsapp" },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        heartbeat: { every: "5m", target: "telegram" },
+        channels: { telegram: { allowFrom: ["*"] } },
       });
       await seedMainSession(storePath, cfg, {
-        lastChannel: "whatsapp",
-        lastProvider: "whatsapp",
+        lastChannel: "telegram",
+        lastProvider: "telegram",
         lastTo: "+1555",
       });
 
       replySpy.mockResolvedValue({ text: "Heartbeat alert" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
 
       const res = await runHeartbeatOnce({
         cfg,
-        deps: makeWhatsAppDeps({
-          sendWhatsApp,
+        deps: makeTelegramDeps({
+          sendTelegram,
           webAuthExists: async () => false,
           hasActiveWebListener: () => false,
         }),
       });
 
-      expect(res.status).toBe("skipped");
-      expect(res).toMatchObject({ reason: "whatsapp-not-linked" });
-      expect(sendWhatsApp).not.toHaveBeenCalled();
+      expect(res.status).toBe("ran");
+      expect(sendTelegram).toHaveBeenCalled();
     });
   });
 

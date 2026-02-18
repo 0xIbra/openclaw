@@ -15,10 +15,8 @@ import {
   isSubagentSessionKey,
   normalizeAgentId,
 } from "../../../routing/session-key.js";
-import { resolveSignalReactionLevel } from "../../../signal/reaction-level.js";
 import { resolveTelegramInlineButtonsScope } from "../../../telegram/inline-buttons.js";
 import { resolveTelegramReactionLevel } from "../../../telegram/reaction-level.js";
-import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { resolveUserPath } from "../../../utils.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
@@ -359,14 +357,6 @@ export async function runEmbeddedAttempt(
               const level = resolved.agentReactionGuidance;
               return level ? { level, channel: "Telegram" } : undefined;
             }
-            if (runtimeChannel === "signal") {
-              const resolved = resolveSignalReactionLevel({
-                cfg: params.config,
-                accountId: params.agentAccountId ?? undefined,
-              });
-              const level = resolved.agentReactionGuidance;
-              return level ? { level, channel: "Signal" } : undefined;
-            }
             return undefined;
           })()
         : undefined;
@@ -425,8 +415,6 @@ export async function runEmbeddedAttempt(
       cwd: process.cwd(),
       moduleUrl: import.meta.url,
     });
-    const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
-
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -439,7 +427,6 @@ export async function runEmbeddedAttempt(
         : undefined,
       skillsPrompt,
       docsPath: docsPath ?? undefined,
-      ttsHint,
       workspaceNotes,
       reactionGuidance,
       promptMode,

@@ -1,15 +1,11 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import type { DiscordConfig } from "../../config/types.js";
-import type {
-  GroupToolPolicyBySenderConfig,
-  GroupToolPolicyConfig,
-} from "../../config/types.tools.js";
+import type { GroupToolPolicyConfig } from "../../config/types.tools.js";
 import {
   resolveChannelGroupRequireMention,
   resolveChannelGroupToolsPolicy,
   resolveToolsBySender,
 } from "../../config/group-policy.js";
-import { resolveSlackAccount } from "../../slack/accounts.js";
 
 type GroupMentionParams = {
   cfg: OpenClawConfig;
@@ -36,16 +32,6 @@ function normalizeDiscordSlug(value?: string | null) {
   text = text.replace(/[^a-z0-9-]+/g, "-");
   text = text.replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "");
   return text;
-}
-
-function normalizeSlackSlug(raw?: string | null) {
-  const trimmed = raw?.trim().toLowerCase() ?? "";
-  if (!trimmed) {
-    return "";
-  }
-  const dashed = trimmed.replace(/\s+/g, "-");
-  const cleaned = dashed.replace(/[^a-z0-9#@._+-]+/g, "-");
-  return cleaned.replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "");
 }
 
 function parseTelegramGroupId(value?: string | null) {
@@ -219,38 +205,12 @@ export function resolveGoogleChatGroupToolPolicy(
 }
 
 export function resolveSlackGroupRequireMention(params: GroupMentionParams): boolean {
-  const account = resolveSlackAccount({
+  return resolveChannelGroupRequireMention({
     cfg: params.cfg,
+    channel: "slack",
+    groupId: params.groupId,
     accountId: params.accountId,
   });
-  const channels = account.channels ?? {};
-  const keys = Object.keys(channels);
-  if (keys.length === 0) {
-    return true;
-  }
-  const channelId = params.groupId?.trim();
-  const groupChannel = params.groupChannel;
-  const channelName = groupChannel?.replace(/^#/, "");
-  const normalizedName = normalizeSlackSlug(channelName);
-  const candidates = [
-    channelId ?? "",
-    channelName ? `#${channelName}` : "",
-    channelName ?? "",
-    normalizedName,
-  ].filter(Boolean);
-  let matched: { requireMention?: boolean } | undefined;
-  for (const candidate of candidates) {
-    if (candidate && channels[candidate]) {
-      matched = channels[candidate];
-      break;
-    }
-  }
-  const fallback = channels["*"];
-  const resolved = matched ?? fallback;
-  if (typeof resolved?.requireMention === "boolean") {
-    return resolved.requireMention;
-  }
-  return true;
 }
 
 export function resolveBlueBubblesGroupRequireMention(params: GroupMentionParams): boolean {
@@ -351,49 +311,16 @@ export function resolveDiscordGroupToolPolicy(
 export function resolveSlackGroupToolPolicy(
   params: GroupMentionParams,
 ): GroupToolPolicyConfig | undefined {
-  const account = resolveSlackAccount({
+  return resolveChannelGroupToolsPolicy({
     cfg: params.cfg,
+    channel: "slack",
+    groupId: params.groupId,
     accountId: params.accountId,
-  });
-  const channels = account.channels ?? {};
-  const keys = Object.keys(channels);
-  if (keys.length === 0) {
-    return undefined;
-  }
-  const channelId = params.groupId?.trim();
-  const groupChannel = params.groupChannel;
-  const channelName = groupChannel?.replace(/^#/, "");
-  const normalizedName = normalizeSlackSlug(channelName);
-  const candidates = [
-    channelId ?? "",
-    channelName ? `#${channelName}` : "",
-    channelName ?? "",
-    normalizedName,
-  ].filter(Boolean);
-  let matched:
-    | { tools?: GroupToolPolicyConfig; toolsBySender?: GroupToolPolicyBySenderConfig }
-    | undefined;
-  for (const candidate of candidates) {
-    if (candidate && channels[candidate]) {
-      matched = channels[candidate];
-      break;
-    }
-  }
-  const resolved = matched ?? channels["*"];
-  const senderPolicy = resolveToolsBySender({
-    toolsBySender: resolved?.toolsBySender,
     senderId: params.senderId,
     senderName: params.senderName,
     senderUsername: params.senderUsername,
     senderE164: params.senderE164,
   });
-  if (senderPolicy) {
-    return senderPolicy;
-  }
-  if (resolved?.tools) {
-    return resolved.tools;
-  }
-  return undefined;
 }
 
 export function resolveBlueBubblesGroupToolPolicy(

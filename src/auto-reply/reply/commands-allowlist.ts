@@ -3,7 +3,6 @@ import type { OpenClawConfig } from "../../config/config.js";
 import type { CommandHandler } from "./commands-types.js";
 import { getChannelDock } from "../../channels/dock.js";
 import { resolveChannelConfigWrites } from "../../channels/plugins/config-writes.js";
-import { listPairingChannels } from "../../channels/plugins/pairing.js";
 import { normalizeChannelId } from "../../channels/registry.js";
 import {
   readConfigFileSnapshot,
@@ -13,18 +12,8 @@ import {
 import { resolveDiscordAccount } from "../../discord/accounts.js";
 import { resolveDiscordUserAllowlist } from "../../discord/resolve-users.js";
 import { logVerbose } from "../../globals.js";
-import { resolveIMessageAccount } from "../../imessage/accounts.js";
-import {
-  addChannelAllowFromStoreEntry,
-  readChannelAllowFromStore,
-  removeChannelAllowFromStoreEntry,
-} from "../../pairing/pairing-store.js";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../../routing/session-key.js";
-import { resolveSignalAccount } from "../../signal/accounts.js";
-import { resolveSlackAccount } from "../../slack/accounts.js";
-import { resolveSlackUserAllowlist } from "../../slack/resolve-users.js";
 import { resolveTelegramAccount } from "../../telegram/accounts.js";
-import { resolveWhatsAppAccount } from "../../web/accounts.js";
 
 type AllowlistScope = "dm" | "group" | "all";
 type AllowlistAction = "list" | "add" | "remove";
@@ -252,53 +241,13 @@ function resolveChannelAllowFromPaths(
   if (scope === "all") {
     return null;
   }
-  if (scope === "dm") {
-    if (channelId === "slack" || channelId === "discord") {
-      // Canonical DM allowlist location for Slack/Discord. Legacy: dm.allowFrom.
-      return ["allowFrom"];
-    }
-    if (
-      channelId === "telegram" ||
-      channelId === "whatsapp" ||
-      channelId === "signal" ||
-      channelId === "imessage"
-    ) {
-      return ["allowFrom"];
-    }
-    return null;
+  if (channelId === "telegram") {
+    return scope === "dm" ? ["allowFrom"] : ["groupAllowFrom"];
   }
-  if (scope === "group") {
-    if (
-      channelId === "telegram" ||
-      channelId === "whatsapp" ||
-      channelId === "signal" ||
-      channelId === "imessage"
-    ) {
-      return ["groupAllowFrom"];
-    }
-    return null;
+  if (channelId === "discord") {
+    return scope === "dm" ? ["allowFrom"] : null;
   }
   return null;
-}
-
-async function resolveSlackNames(params: {
-  cfg: OpenClawConfig;
-  accountId?: string | null;
-  entries: string[];
-}) {
-  const account = resolveSlackAccount({ cfg: params.cfg, accountId: params.accountId });
-  const token = account.config.userToken?.trim() || account.botToken?.trim();
-  if (!token) {
-    return new Map<string, string>();
-  }
-  const resolved = await resolveSlackUserAllowlist({ token, entries: params.entries });
-  const map = new Map<string, string>();
-  for (const entry of resolved) {
-    if (entry.resolved && entry.name) {
-      map.set(entry.input, entry.name);
-    }
-  }
-  return map;
 }
 
 async function resolveDiscordNames(params: {
@@ -349,16 +298,17 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
       reply: { text: "⚠️ Unknown channel. Add channel=<id> to the command." },
     };
   }
+  if (channelId !== "telegram" && channelId !== "discord") {
+    return {
+      shouldContinue: false,
+      reply: { text: `⚠️ /allowlist supports only telegram and discord in this build.` },
+    };
+  }
+
   const accountId = normalizeAccountId(parsed.account ?? params.ctx.AccountId);
   const scope = parsed.scope;
 
   if (parsed.action === "list") {
-    const pairingChannels = listPairingChannels();
-    const supportsStore = pairingChannels.includes(channelId);
-    const storeAllowFrom = supportsStore
-      ? await readChannelAllowFromStore(channelId).catch(() => [])
-      : [];
-
     let dmAllowFrom: string[] = [];
     let groupAllowFrom: string[] = [];
     let groupOverrides: Array<{ label: string; entries: string[] }> = [];
@@ -385,35 +335,6 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
           }
         }
       }
-    } else if (channelId === "whatsapp") {
-      const account = resolveWhatsAppAccount({ cfg: params.cfg, accountId });
-      dmAllowFrom = (account.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.dmPolicy;
-      groupPolicy = account.groupPolicy;
-    } else if (channelId === "signal") {
-      const account = resolveSignalAccount({ cfg: params.cfg, accountId });
-      dmAllowFrom = (account.config.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.config.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.config.dmPolicy;
-      groupPolicy = account.config.groupPolicy;
-    } else if (channelId === "imessage") {
-      const account = resolveIMessageAccount({ cfg: params.cfg, accountId });
-      dmAllowFrom = (account.config.allowFrom ?? []).map(String);
-      groupAllowFrom = (account.config.groupAllowFrom ?? []).map(String);
-      dmPolicy = account.config.dmPolicy;
-      groupPolicy = account.config.groupPolicy;
-    } else if (channelId === "slack") {
-      const account = resolveSlackAccount({ cfg: params.cfg, accountId });
-      dmAllowFrom = (account.config.allowFrom ?? account.config.dm?.allowFrom ?? []).map(String);
-      groupPolicy = account.groupPolicy;
-      const channels = account.channels ?? {};
-      groupOverrides = Object.entries(channels)
-        .map(([key, value]) => {
-          const entries = (value?.users ?? []).map(String).filter(Boolean);
-          return entries.length > 0 ? { label: key, entries } : null;
-        })
-        .filter(Boolean) as Array<{ label: string; entries: string[] }>;
     } else if (channelId === "discord") {
       const account = resolveDiscordAccount({ cfg: params.cfg, accountId });
       dmAllowFrom = (account.config.allowFrom ?? account.config.dm?.allowFrom ?? []).map(String);
@@ -457,25 +378,17 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
       values: groupOverrideEntries,
     });
     const resolvedDm =
-      parsed.resolve && dmDisplay.length > 0 && channelId === "slack"
-        ? await resolveSlackNames({ cfg: params.cfg, accountId, entries: dmDisplay })
-        : parsed.resolve && dmDisplay.length > 0 && channelId === "discord"
-          ? await resolveDiscordNames({ cfg: params.cfg, accountId, entries: dmDisplay })
-          : undefined;
+      parsed.resolve && dmDisplay.length > 0 && channelId === "discord"
+        ? await resolveDiscordNames({ cfg: params.cfg, accountId, entries: dmDisplay })
+        : undefined;
     const resolvedGroup =
-      parsed.resolve && groupOverrideDisplay.length > 0 && channelId === "slack"
-        ? await resolveSlackNames({
+      parsed.resolve && groupOverrideDisplay.length > 0 && channelId === "discord"
+        ? await resolveDiscordNames({
             cfg: params.cfg,
             accountId,
             entries: groupOverrideDisplay,
           })
-        : parsed.resolve && groupOverrideDisplay.length > 0 && channelId === "discord"
-          ? await resolveDiscordNames({
-              cfg: params.cfg,
-              accountId,
-              entries: groupOverrideDisplay,
-            })
-          : undefined;
+        : undefined;
 
     const lines: string[] = ["🧾 Allowlist"];
     lines.push(`Channel: ${channelId}${accountId ? ` (account ${accountId})` : ""}`);
@@ -490,15 +403,6 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
     const showGroup = scope === "group" || scope === "all";
     if (showDm) {
       lines.push(`DM allowFrom (config): ${formatEntryList(dmDisplay, resolvedDm)}`);
-    }
-    if (supportsStore && storeAllowFrom.length > 0) {
-      const storeLabel = normalizeAllowFrom({
-        cfg: params.cfg,
-        channelId,
-        accountId,
-        values: storeAllowFrom,
-      });
-      lines.push(`Paired allowFrom (store): ${formatEntryList(storeLabel)}`);
     }
     if (showGroup) {
       if (groupAllowFrom.length > 0) {
@@ -528,188 +432,152 @@ export const handleAllowlistCommand: CommandHandler = async (params, allowTextCo
     };
   }
 
-  const shouldUpdateConfig = parsed.target !== "store";
-  const shouldTouchStore = parsed.target !== "config" && listPairingChannels().includes(channelId);
+  if (parsed.target === "store") {
+    return {
+      shouldContinue: false,
+      reply: { text: "⚠️ Pairing-store allowlist edits are no longer supported." },
+    };
+  }
 
-  if (shouldUpdateConfig) {
-    const allowWrites = resolveChannelConfigWrites({
-      cfg: params.cfg,
-      channelId,
-      accountId: params.ctx.AccountId,
-    });
-    if (!allowWrites) {
-      const hint = `channels.${channelId}.configWrites=true`;
-      return {
-        shouldContinue: false,
-        reply: { text: `⚠️ Config writes are disabled for ${channelId}. Set ${hint} to enable.` },
-      };
-    }
+  const allowWrites = resolveChannelConfigWrites({
+    cfg: params.cfg,
+    channelId,
+    accountId: params.ctx.AccountId,
+  });
+  if (!allowWrites) {
+    const hint = `channels.${channelId}.configWrites=true`;
+    return {
+      shouldContinue: false,
+      reply: { text: `⚠️ Config writes are disabled for ${channelId}. Set ${hint} to enable.` },
+    };
+  }
 
-    const allowlistPath = resolveChannelAllowFromPaths(channelId, scope);
-    if (!allowlistPath) {
-      return {
-        shouldContinue: false,
-        reply: {
-          text: `⚠️ ${channelId} does not support ${scope} allowlist edits via /allowlist.`,
-        },
-      };
-    }
-
-    const snapshot = await readConfigFileSnapshot();
-    if (!snapshot.valid || !snapshot.parsed || typeof snapshot.parsed !== "object") {
-      return {
-        shouldContinue: false,
-        reply: { text: "⚠️ Config file is invalid; fix it before using /allowlist." },
-      };
-    }
-    const parsedConfig = structuredClone(snapshot.parsed as Record<string, unknown>);
-    const {
-      target,
-      pathPrefix,
-      accountId: normalizedAccountId,
-    } = resolveAccountTarget(parsedConfig, channelId, accountId);
-    const existing: string[] = [];
-    const existingPaths =
-      scope === "dm" && (channelId === "slack" || channelId === "discord")
-        ? // Read both while legacy alias may still exist; write canonical below.
-          [allowlistPath, ["dm", "allowFrom"]]
-        : [allowlistPath];
-    for (const path of existingPaths) {
-      const existingRaw = getNestedValue(target, path);
-      if (!Array.isArray(existingRaw)) {
-        continue;
-      }
-      for (const entry of existingRaw) {
-        const value = String(entry).trim();
-        if (!value || existing.includes(value)) {
-          continue;
-        }
-        existing.push(value);
-      }
-    }
-
-    const normalizedEntry = normalizeAllowFrom({
-      cfg: params.cfg,
-      channelId,
-      accountId: normalizedAccountId,
-      values: [parsed.entry],
-    });
-    if (normalizedEntry.length === 0) {
-      return {
-        shouldContinue: false,
-        reply: { text: "⚠️ Invalid allowlist entry." },
-      };
-    }
-
-    const existingNormalized = normalizeAllowFrom({
-      cfg: params.cfg,
-      channelId,
-      accountId: normalizedAccountId,
-      values: existing,
-    });
-
-    const shouldMatch = (value: string) => normalizedEntry.includes(value);
-
-    let configChanged = false;
-    let next = existing;
-    const configHasEntry = existingNormalized.some((value) => shouldMatch(value));
-    if (parsed.action === "add") {
-      if (!configHasEntry) {
-        next = [...existing, parsed.entry.trim()];
-        configChanged = true;
-      }
-    }
-
-    if (parsed.action === "remove") {
-      const keep: string[] = [];
-      for (const entry of existing) {
-        const normalized = normalizeAllowFrom({
-          cfg: params.cfg,
-          channelId,
-          accountId: normalizedAccountId,
-          values: [entry],
-        });
-        if (normalized.some((value) => shouldMatch(value))) {
-          configChanged = true;
-          continue;
-        }
-        keep.push(entry);
-      }
-      next = keep;
-    }
-
-    if (configChanged) {
-      if (next.length === 0) {
-        deleteNestedValue(target, allowlistPath);
-      } else {
-        setNestedValue(target, allowlistPath, next);
-      }
-      if (scope === "dm" && (channelId === "slack" || channelId === "discord")) {
-        // Remove legacy DM allowlist alias to prevent drift.
-        deleteNestedValue(target, ["dm", "allowFrom"]);
-      }
-    }
-
-    if (configChanged) {
-      const validated = validateConfigObjectWithPlugins(parsedConfig);
-      if (!validated.ok) {
-        const issue = validated.issues[0];
-        return {
-          shouldContinue: false,
-          reply: { text: `⚠️ Config invalid after update (${issue.path}: ${issue.message}).` },
-        };
-      }
-      await writeConfigFile(validated.config);
-    }
-
-    if (!configChanged && !shouldTouchStore) {
-      const message = parsed.action === "add" ? "✅ Already allowlisted." : "⚠️ Entry not found.";
-      return { shouldContinue: false, reply: { text: message } };
-    }
-
-    if (shouldTouchStore) {
-      if (parsed.action === "add") {
-        await addChannelAllowFromStoreEntry({ channel: channelId, entry: parsed.entry });
-      } else if (parsed.action === "remove") {
-        await removeChannelAllowFromStoreEntry({ channel: channelId, entry: parsed.entry });
-      }
-    }
-
-    const actionLabel = parsed.action === "add" ? "added" : "removed";
-    const scopeLabel = scope === "dm" ? "DM" : "group";
-    const locations: string[] = [];
-    if (configChanged) {
-      locations.push(`${pathPrefix}.${allowlistPath.join(".")}`);
-    }
-    if (shouldTouchStore) {
-      locations.push("pairing store");
-    }
-    const targetLabel = locations.length > 0 ? locations.join(" + ") : "no-op";
+  const allowlistPath = resolveChannelAllowFromPaths(channelId, scope);
+  if (!allowlistPath) {
     return {
       shouldContinue: false,
       reply: {
-        text: `✅ ${scopeLabel} allowlist ${actionLabel}: ${targetLabel}.`,
+        text: `⚠️ ${channelId} does not support ${scope} allowlist edits via /allowlist.`,
       },
     };
   }
 
-  if (!shouldTouchStore) {
+  const snapshot = await readConfigFileSnapshot();
+  if (!snapshot.valid || !snapshot.parsed || typeof snapshot.parsed !== "object") {
     return {
       shouldContinue: false,
-      reply: { text: "⚠️ This channel does not support allowlist storage." },
+      reply: { text: "⚠️ Config file is invalid; fix it before using /allowlist." },
+    };
+  }
+  const parsedConfig = structuredClone(snapshot.parsed as Record<string, unknown>);
+  const {
+    target,
+    pathPrefix,
+    accountId: normalizedAccountId,
+  } = resolveAccountTarget(parsedConfig, channelId, accountId);
+  const existing: string[] = [];
+  const existingPaths =
+    scope === "dm" && channelId === "discord"
+      ? [allowlistPath, ["dm", "allowFrom"]]
+      : [allowlistPath];
+  for (const path of existingPaths) {
+    const existingRaw = getNestedValue(target, path);
+    if (!Array.isArray(existingRaw)) {
+      continue;
+    }
+    for (const entry of existingRaw) {
+      const value = String(entry).trim();
+      if (!value || existing.includes(value)) {
+        continue;
+      }
+      existing.push(value);
+    }
+  }
+
+  const normalizedEntry = normalizeAllowFrom({
+    cfg: params.cfg,
+    channelId,
+    accountId: normalizedAccountId,
+    values: [parsed.entry],
+  });
+  if (normalizedEntry.length === 0) {
+    return {
+      shouldContinue: false,
+      reply: { text: "⚠️ Invalid allowlist entry." },
     };
   }
 
+  const existingNormalized = normalizeAllowFrom({
+    cfg: params.cfg,
+    channelId,
+    accountId: normalizedAccountId,
+    values: existing,
+  });
+
+  const shouldMatch = (value: string) => normalizedEntry.includes(value);
+
+  let configChanged = false;
+  let next = existing;
+  const configHasEntry = existingNormalized.some((value) => shouldMatch(value));
   if (parsed.action === "add") {
-    await addChannelAllowFromStoreEntry({ channel: channelId, entry: parsed.entry });
-  } else if (parsed.action === "remove") {
-    await removeChannelAllowFromStoreEntry({ channel: channelId, entry: parsed.entry });
+    if (!configHasEntry) {
+      next = [...existing, parsed.entry.trim()];
+      configChanged = true;
+    }
+  }
+
+  if (parsed.action === "remove") {
+    const keep: string[] = [];
+    for (const entry of existing) {
+      const normalized = normalizeAllowFrom({
+        cfg: params.cfg,
+        channelId,
+        accountId: normalizedAccountId,
+        values: [entry],
+      });
+      if (normalized.some((value) => shouldMatch(value))) {
+        configChanged = true;
+        continue;
+      }
+      keep.push(entry);
+    }
+    next = keep;
+  }
+
+  if (configChanged) {
+    if (next.length === 0) {
+      deleteNestedValue(target, allowlistPath);
+    } else {
+      setNestedValue(target, allowlistPath, next);
+    }
+    if (scope === "dm" && channelId === "discord") {
+      deleteNestedValue(target, ["dm", "allowFrom"]);
+    }
+  }
+
+  if (configChanged) {
+    const validated = validateConfigObjectWithPlugins(parsedConfig);
+    if (!validated.ok) {
+      const issue = validated.issues[0];
+      return {
+        shouldContinue: false,
+        reply: { text: `⚠️ Config invalid after update (${issue.path}: ${issue.message}).` },
+      };
+    }
+    await writeConfigFile(validated.config);
+  }
+
+  if (!configChanged) {
+    const message = parsed.action === "add" ? "✅ Already allowlisted." : "⚠️ Entry not found.";
+    return { shouldContinue: false, reply: { text: message } };
   }
 
   const actionLabel = parsed.action === "add" ? "added" : "removed";
   const scopeLabel = scope === "dm" ? "DM" : "group";
   return {
     shouldContinue: false,
-    reply: { text: `✅ ${scopeLabel} allowlist ${actionLabel} in pairing store.` },
+    reply: {
+      text: `✅ ${scopeLabel} allowlist ${actionLabel}: ${pathPrefix}.${allowlistPath.join(".")}.`,
+    },
   };
 };

@@ -34,7 +34,7 @@ type TelegramSendTestMocks = {
   loadWebMedia: MockFn;
 };
 
-vi.mock("../web/media.js", () => ({
+vi.mock("../media/web-media.js", () => ({
   loadWebMedia,
 }));
 

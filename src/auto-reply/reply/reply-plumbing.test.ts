@@ -15,37 +15,6 @@ import {
 describe("buildThreadingToolContext", () => {
   const cfg = {} as OpenClawConfig;
 
-  it("uses conversation id for WhatsApp", () => {
-    const sessionCtx = {
-      Provider: "whatsapp",
-      From: "123@g.us",
-      To: "+15550001",
-    } as TemplateContext;
-
-    const result = buildThreadingToolContext({
-      sessionCtx,
-      config: cfg,
-      hasRepliedRef: undefined,
-    });
-
-    expect(result.currentChannelId).toBe("123@g.us");
-  });
-
-  it("falls back to To for WhatsApp when From is missing", () => {
-    const sessionCtx = {
-      Provider: "whatsapp",
-      To: "+15550001",
-    } as TemplateContext;
-
-    const result = buildThreadingToolContext({
-      sessionCtx,
-      config: cfg,
-      hasRepliedRef: undefined,
-    });
-
-    expect(result.currentChannelId).toBe("+15550001");
-  });
-
   it("uses the recipient id for other channels", () => {
     const sessionCtx = {
       Provider: "telegram",
@@ -62,12 +31,11 @@ describe("buildThreadingToolContext", () => {
     expect(result.currentChannelId).toBe("chat:99");
   });
 
-  it("uses the sender handle for iMessage direct chats", () => {
+  it("uses the recipient id for Discord", () => {
     const sessionCtx = {
-      Provider: "imessage",
-      ChatType: "direct",
-      From: "imessage:+15550001",
-      To: "chat_id:12",
+      Provider: "discord",
+      From: "user:42",
+      To: "channel:99",
     } as TemplateContext;
 
     const result = buildThreadingToolContext({
@@ -76,41 +44,24 @@ describe("buildThreadingToolContext", () => {
       hasRepliedRef: undefined,
     });
 
-    expect(result.currentChannelId).toBe("imessage:+15550001");
+    expect(result.currentChannelId).toBe("channel:99");
   });
 
-  it("uses chat_id for iMessage groups", () => {
+  it("keeps Discord threading context without Slack-style thread timestamps", () => {
     const sessionCtx = {
-      Provider: "imessage",
-      ChatType: "group",
-      From: "imessage:group:7",
-      To: "chat_id:7",
-    } as TemplateContext;
-
-    const result = buildThreadingToolContext({
-      sessionCtx,
-      config: cfg,
-      hasRepliedRef: undefined,
-    });
-
-    expect(result.currentChannelId).toBe("chat_id:7");
-  });
-
-  it("prefers MessageThreadId for Slack tool threading", () => {
-    const sessionCtx = {
-      Provider: "slack",
+      Provider: "discord",
       To: "channel:C1",
       MessageThreadId: "123.456",
     } as TemplateContext;
 
     const result = buildThreadingToolContext({
       sessionCtx,
-      config: { channels: { slack: { replyToMode: "all" } } } as OpenClawConfig,
+      config: { channels: { discord: { replyToMode: "all" } } } as OpenClawConfig,
       hasRepliedRef: undefined,
     });
 
-    expect(result.currentChannelId).toBe("C1");
-    expect(result.currentThreadTs).toBe("123.456");
+    expect(result.currentChannelId).toBe("channel:C1");
+    expect(result.currentThreadTs).toBeUndefined();
   });
 });
 

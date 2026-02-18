@@ -370,6 +370,7 @@ describe("resolveGroupRequireMention", () => {
       GroupSpace: "145",
     };
     const groupResolution: GroupKeyResolution = {
+      key: "discord:group:123",
       channel: "discord",
       id: "123",
       chatType: "group",
@@ -378,24 +379,25 @@ describe("resolveGroupRequireMention", () => {
     expect(resolveGroupRequireMention({ cfg, ctx, groupResolution })).toBe(false);
   });
 
-  it("respects Slack channel requireMention settings", () => {
+  it("respects Telegram group requireMention settings", () => {
     const cfg: OpenClawConfig = {
       channels: {
-        slack: {
-          channels: {
-            C123: { requireMention: false },
+        telegram: {
+          groups: {
+            "-1001": { requireMention: false },
           },
         },
       },
     };
     const ctx: TemplateContext = {
-      Provider: "slack",
-      From: "slack:channel:C123",
-      GroupSubject: "#general",
+      Provider: "telegram",
+      From: "telegram:group:-1001",
+      GroupSubject: "General",
     };
     const groupResolution: GroupKeyResolution = {
-      channel: "slack",
-      id: "C123",
+      key: "telegram:group:-1001",
+      channel: "telegram",
+      id: "-1001",
       chatType: "group",
     };
 

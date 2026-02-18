@@ -7,6 +7,8 @@ import { resolveGatewayMessageChannel } from "./message-channel.js";
 const createRegistry = (channels: PluginRegistry["channels"]): PluginRegistry => ({
   plugins: [],
   tools: [],
+  hooks: [],
+  typedHooks: [],
   channels,
   providers: [],
   gatewayHandlers: {},
@@ -14,6 +16,7 @@ const createRegistry = (channels: PluginRegistry["channels"]): PluginRegistry =>
   httpRoutes: [],
   cliRegistrars: [],
   services: [],
+  commands: [],
   diagnostics: [],
 });
 
@@ -47,7 +50,8 @@ describe("message-channel", () => {
 
   it("normalizes gateway message channels and rejects unknown values", () => {
     expect(resolveGatewayMessageChannel("discord")).toBe("discord");
-    expect(resolveGatewayMessageChannel(" imsg ")).toBe("imessage");
+    expect(resolveGatewayMessageChannel("telegram")).toBe("telegram");
+    expect(resolveGatewayMessageChannel(" imsg ")).toBeUndefined();
     expect(resolveGatewayMessageChannel("web")).toBeUndefined();
     expect(resolveGatewayMessageChannel("nope")).toBeUndefined();
   });

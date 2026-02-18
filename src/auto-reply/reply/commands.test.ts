@@ -546,9 +546,7 @@ describe("handleCommands /allowlist", () => {
     vi.clearAllMocks();
   });
 
-  it("lists config + store allowFrom entries", async () => {
-    readChannelAllowFromStoreMock.mockResolvedValueOnce(["456"]);
-
+  it("lists config allowFrom entries", async () => {
     const cfg = {
       commands: { text: true },
       channels: { telegram: { allowFrom: ["123", "@Alice"] } },
@@ -559,10 +557,9 @@ describe("handleCommands /allowlist", () => {
     expect(result.shouldContinue).toBe(false);
     expect(result.reply?.text).toContain("Channel: telegram");
     expect(result.reply?.text).toContain("DM allowFrom (config): 123, @alice");
-    expect(result.reply?.text).toContain("Paired allowFrom (store): 456");
   });
 
-  it("adds entries to config and pairing store", async () => {
+  it("adds entries to config", async () => {
     readConfigFileSnapshotMock.mockResolvedValueOnce({
       valid: true,
       parsed: {
@@ -573,10 +570,6 @@ describe("handleCommands /allowlist", () => {
       ok: true,
       config,
     }));
-    addChannelAllowFromStoreEntryMock.mockResolvedValueOnce({
-      changed: true,
-      allowFrom: ["123", "789"],
-    });
 
     const cfg = {
       commands: { text: true, config: true },
@@ -591,54 +584,7 @@ describe("handleCommands /allowlist", () => {
         channels: { telegram: { allowFrom: ["123", "789"] } },
       }),
     );
-    expect(addChannelAllowFromStoreEntryMock).toHaveBeenCalledWith({
-      channel: "telegram",
-      entry: "789",
-    });
     expect(result.reply?.text).toContain("DM allowlist added");
-  });
-
-  it("removes Slack DM allowlist entries from canonical allowFrom and deletes legacy dm.allowFrom", async () => {
-    readConfigFileSnapshotMock.mockResolvedValueOnce({
-      valid: true,
-      parsed: {
-        channels: {
-          slack: {
-            allowFrom: ["U111", "U222"],
-            dm: { allowFrom: ["U111", "U222"] },
-            configWrites: true,
-          },
-        },
-      },
-    });
-    validateConfigObjectWithPluginsMock.mockImplementation((config: unknown) => ({
-      ok: true,
-      config,
-    }));
-
-    const cfg = {
-      commands: { text: true, config: true },
-      channels: {
-        slack: {
-          allowFrom: ["U111", "U222"],
-          dm: { allowFrom: ["U111", "U222"] },
-          configWrites: true,
-        },
-      },
-    } as OpenClawConfig;
-
-    const params = buildPolicyParams("/allowlist remove dm U111", cfg, {
-      Provider: "slack",
-      Surface: "slack",
-    });
-    const result = await handleCommands(params);
-
-    expect(result.shouldContinue).toBe(false);
-    expect(writeConfigFileMock).toHaveBeenCalledTimes(1);
-    const written = writeConfigFileMock.mock.calls[0]?.[0] as OpenClawConfig;
-    expect(written.channels?.slack?.allowFrom).toEqual(["U222"]);
-    expect(written.channels?.slack?.dm?.allowFrom).toBeUndefined();
-    expect(result.reply?.text).toContain("channels.slack.allowFrom");
   });
 
   it("removes Discord DM allowlist entries from canonical allowFrom and deletes legacy dm.allowFrom", async () => {
@@ -691,7 +637,7 @@ describe("/models command", () => {
     agents: { defaults: { model: { primary: "anthropic/claude-opus-4-5" } } },
   } as unknown as OpenClawConfig;
 
-  it.each(["discord", "whatsapp"])("lists providers on %s (text)", async (surface) => {
+  it.each(["discord"])("lists providers on %s (text)", async (surface) => {
     const params = buildPolicyParams("/models", cfg, { Provider: surface, Surface: surface });
     const result = await handleCommands(params);
     expect(result.shouldContinue).toBe(false);
@@ -1355,15 +1301,14 @@ describe("handleCommands subagents", () => {
 });
 
 describe("handleCommands /tts", () => {
-  it("returns status for bare /tts on text command surfaces", async () => {
+  it("falls through for /tts after TTS command removal", async () => {
     const cfg = {
       commands: { text: true },
       channels: { whatsapp: { allowFrom: ["*"] } },
-      messages: { tts: { prefsPath: path.join(testWorkspaceDir, "tts.json") } },
     } as OpenClawConfig;
     const params = buildParams("/tts", cfg);
     const result = await handleCommands(params);
-    expect(result.shouldContinue).toBe(false);
-    expect(result.reply?.text).toContain("TTS status");
+    expect(result.shouldContinue).toBe(true);
+    expect(result.reply).toBeUndefined();
   });
 });

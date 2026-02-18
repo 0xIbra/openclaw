@@ -6,7 +6,6 @@ import {
   readAllowFromStoreMock,
   sendMock,
   updateLastRouteMock,
-  upsertPairingRequestMock,
 } from "./monitor.tool-result.test-harness.js";
 
 type Config = ReturnType<typeof import("../config/config.js").loadConfig>;
@@ -20,7 +19,6 @@ beforeEach(() => {
     return { queuedFinal: true, counts: { tool: 0, block: 0, final: 1 } };
   });
   readAllowFromStoreMock.mockReset().mockResolvedValue([]);
-  upsertPairingRequestMock.mockReset().mockResolvedValue({ code: "PAIRCODE", created: true });
 });
 
 const BASE_CFG = {
@@ -338,7 +336,7 @@ describe("discord tool result dispatch", () => {
     expect(capturedBody).toContain("Ada (Ada#1234): hello");
   });
 
-  it("replies with pairing code and sender id when dmPolicy is pairing", async () => {
+  it("replies with explicit denial when dmPolicy is pairing", async () => {
     const cfg = {
       ...BASE_CFG,
       channels: {
@@ -371,9 +369,7 @@ describe("discord tool result dispatch", () => {
     );
 
     expect(dispatchMock).not.toHaveBeenCalled();
-    expect(upsertPairingRequestMock).toHaveBeenCalled();
     expect(sendMock).toHaveBeenCalledTimes(1);
-    expect(String(sendMock.mock.calls[0]?.[1] ?? "")).toContain("Your Discord user id: u2");
-    expect(String(sendMock.mock.calls[0]?.[1] ?? "")).toContain("Pairing code: PAIRCODE");
+    expect(String(sendMock.mock.calls[0]?.[1] ?? "")).toContain("Pairing is not available.");
   }, 10000);
 });

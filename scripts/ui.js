@@ -8,6 +8,63 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const uiDir = path.join(repoRoot, "ui");
+const controlUiDistDir = path.join(repoRoot, "dist", "control-ui");
+const controlUiIndexPath = path.join(controlUiDistDir, "index.html");
+
+function writeControlUiFallback() {
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenClaw Control UI</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b1220;
+        color: #e5e7eb;
+      }
+      main {
+        max-width: 680px;
+        padding: 24px;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.88);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.25rem;
+      }
+      p {
+        margin: 8px 0;
+        line-height: 1.5;
+      }
+      code {
+        background: rgba(148, 163, 184, 0.2);
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Control UI unavailable in stripped build</h1>
+      <p>The standalone web UI source directory was removed from this checkout.</p>
+      <p>Gateway APIs are still available. If you need the full web UI, restore <code>/ui</code> and run <code>pnpm ui:build</code>.</p>
+    </main>
+  </body>
+</html>
+`;
+  fs.mkdirSync(controlUiDistDir, { recursive: true });
+  fs.writeFileSync(controlUiIndexPath, html, "utf8");
+}
 
 function usage() {
   // keep this tiny; it's invoked from npm scripts too
@@ -123,12 +180,28 @@ if (action !== "install" && !script) {
 }
 
 if (action === "install") {
+  if (!fs.existsSync(uiDir)) {
+    process.stderr.write("UI source directory not found; skipping UI install.\n");
+    process.exit(0);
+  }
   run(runner.cmd, ["install", ...rest]);
 } else {
+  if (!fs.existsSync(uiDir)) {
+    if (action === "build") {
+      writeControlUiFallback();
+      process.stderr.write(
+        `UI source directory not found; wrote fallback Control UI page to ${controlUiIndexPath}.\n`,
+      );
+      process.exit(0);
+    }
+    process.stderr.write(
+      "UI source directory not found; this command is unavailable in stripped mode.\n",
+    );
+    process.exit(1);
+  }
   if (!depsInstalled(action === "test" ? "test" : "build")) {
-    const installEnv =
-      action === "build" ? { ...process.env, NODE_ENV: "production" } : process.env;
-    const installArgs = action === "build" ? ["install", "--prod"] : ["install"];
+    const installEnv = process.env;
+    const installArgs = action === "build" ? ["install", "--force"] : ["install"];
     runSync(runner.cmd, installArgs, installEnv);
   }
   run(runner.cmd, ["run", script, ...rest]);

@@ -4,36 +4,33 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChannelPlugin } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import { slackPlugin } from "../../../extensions/slack/src/channel.js";
+import { discordPlugin } from "../../../extensions/discord/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
-import { whatsappPlugin } from "../../../extensions/whatsapp/src/channel.js";
 import { jsonResult } from "../../agents/tools/common.js";
+import { loadWebMedia } from "../../media/web-media.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../../test-utils/channel-plugins.js";
-import { createIMessageTestPlugin } from "../../test-utils/imessage-test-plugin.js";
-import { loadWebMedia } from "../../web/media.js";
 import { runMessageAction } from "./message-action-runner.js";
 
-vi.mock("../../web/media.js", async () => {
-  const actual = await vi.importActual<typeof import("../../web/media.js")>("../../web/media.js");
+vi.mock("../../media/web-media.js", async () => {
+  const actual = await vi.importActual<typeof import("../../media/web-media.js")>(
+    "../../media/web-media.js",
+  );
   return {
     ...actual,
     loadWebMedia: vi.fn(actual.loadWebMedia),
   };
 });
 
-const slackConfig = {
+const discordConfig = {
   channels: {
-    slack: {
-      botToken: "xoxb-test",
-      appToken: "xapp-test",
-    },
+    discord: {},
   },
 } as OpenClawConfig;
 
-const whatsappConfig = {
+const discordConfig2 = {
   channels: {
-    whatsapp: {
+    discord: {
       allowFrom: ["*"],
     },
   },
@@ -81,24 +78,24 @@ const runDrySend = (params: {
 describe("runMessageAction context isolation", () => {
   beforeEach(async () => {
     const { createPluginRuntime } = await import("../../plugins/runtime/index.js");
-    const { setSlackRuntime } = await import("../../../extensions/slack/src/runtime.js");
+    const { setDiscordRuntime } = await import("../../../extensions/discord/src/runtime.js");
     const { setTelegramRuntime } = await import("../../../extensions/telegram/src/runtime.js");
-    const { setWhatsAppRuntime } = await import("../../../extensions/whatsapp/src/runtime.js");
+
     const runtime = createPluginRuntime();
-    setSlackRuntime(runtime);
+    setDiscordRuntime(runtime);
     setTelegramRuntime(runtime);
-    setWhatsAppRuntime(runtime);
+
     setActivePluginRegistry(
       createTestRegistry([
         {
-          pluginId: "slack",
+          pluginId: "discord",
           source: "test",
-          plugin: slackPlugin,
+          plugin: discordPlugin,
         },
         {
-          pluginId: "whatsapp",
+          pluginId: "discord",
           source: "test",
-          plugin: whatsappPlugin,
+          plugin: discordPlugin,
         },
         {
           pluginId: "telegram",
@@ -106,9 +103,9 @@ describe("runMessageAction context isolation", () => {
           plugin: telegramPlugin,
         },
         {
-          pluginId: "imessage",
+          pluginId: "discord",
           source: "test",
-          plugin: createIMessageTestPlugin(),
+          plugin: discordPlugin,
         },
       ]),
     );
@@ -120,13 +117,13 @@ describe("runMessageAction context isolation", () => {
 
   it("allows send when target matches current channel", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
-        target: "#C12345678",
+        channel: "discord",
+        target: "channel:123456789012345678",
         message: "hi",
       },
-      toolContext: { currentChannelId: "C12345678" },
+      toolContext: { currentChannelId: "channel:123456789012345678" },
     });
 
     expect(result.kind).toBe("send");
@@ -134,10 +131,10 @@ describe("runMessageAction context isolation", () => {
 
   it("accepts legacy to parameter for send", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
-        to: "#C12345678",
+        channel: "discord",
+        to: "channel:123456789012345678",
         message: "hi",
       },
     });
@@ -147,12 +144,12 @@ describe("runMessageAction context isolation", () => {
 
   it("defaults to current channel when target is omitted", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
+        channel: "discord",
         message: "hi",
       },
-      toolContext: { currentChannelId: "C12345678" },
+      toolContext: { currentChannelId: "channel:123456789012345678" },
     });
 
     expect(result.kind).toBe("send");
@@ -160,13 +157,13 @@ describe("runMessageAction context isolation", () => {
 
   it("allows media-only send when target matches current channel", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
-        target: "#C12345678",
+        channel: "discord",
+        target: "channel:123456789012345678",
         media: "https://example.com/note.ogg",
       },
-      toolContext: { currentChannelId: "C12345678" },
+      toolContext: { currentChannelId: "channel:123456789012345678" },
     });
 
     expect(result.kind).toBe("send");
@@ -175,25 +172,28 @@ describe("runMessageAction context isolation", () => {
   it("requires message when no media hint is provided", async () => {
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
-          channel: "slack",
-          target: "#C12345678",
+          channel: "discord",
+          target: "channel:123456789012345678",
         },
-        toolContext: { currentChannelId: "C12345678" },
+        toolContext: { currentChannelId: "channel:123456789012345678" },
       }),
     ).rejects.toThrow(/message required/i);
   });
 
   it("blocks send when target differs from current channel", async () => {
     const result = await runDrySend({
-      cfg: slackConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "slack",
-        target: "channel:C99999999",
+        channel: "discord",
+        target: "channel:999999999999999999",
         message: "hi",
       },
-      toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+      toolContext: {
+        currentChannelId: "channel:123456789012345678",
+        currentChannelProvider: "discord",
+      },
     });
 
     expect(result.kind).toBe("send");
@@ -201,72 +201,78 @@ describe("runMessageAction context isolation", () => {
 
   it("blocks thread-reply when channelId differs from current channel", async () => {
     const result = await runDryAction({
-      cfg: slackConfig,
+      cfg: discordConfig,
       action: "thread-reply",
       actionParams: {
-        channel: "slack",
-        target: "C99999999",
+        channel: "discord",
+        target: "channel:999999999999999999",
         message: "hi",
       },
-      toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+      toolContext: {
+        currentChannelId: "channel:123456789012345678",
+        currentChannelProvider: "discord",
+      },
     });
 
     expect(result.kind).toBe("action");
   });
 
-  it("allows WhatsApp send when target matches current chat", async () => {
+  it("allows Discord DM send when target matches current recipient", async () => {
     const result = await runDrySend({
-      cfg: whatsappConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "whatsapp",
-        target: "123@g.us",
+        channel: "discord",
+        target: "user:123456789012345678",
         message: "hi",
       },
-      toolContext: { currentChannelId: "123@g.us" },
+      toolContext: { currentChannelId: "user:123456789012345678" },
     });
 
     expect(result.kind).toBe("send");
   });
 
-  it("blocks WhatsApp send when target differs from current chat", async () => {
+  it("allows Discord DM send when target differs and cross-context is allowed", async () => {
     const result = await runDrySend({
-      cfg: whatsappConfig,
+      cfg: discordConfig,
       actionParams: {
-        channel: "whatsapp",
-        target: "456@g.us",
-        message: "hi",
-      },
-      toolContext: { currentChannelId: "123@g.us", currentChannelProvider: "whatsapp" },
-    });
-
-    expect(result.kind).toBe("send");
-  });
-
-  it("allows iMessage send when target matches current handle", async () => {
-    const result = await runDrySend({
-      cfg: whatsappConfig,
-      actionParams: {
-        channel: "imessage",
-        target: "imessage:+15551234567",
-        message: "hi",
-      },
-      toolContext: { currentChannelId: "imessage:+15551234567" },
-    });
-
-    expect(result.kind).toBe("send");
-  });
-
-  it("blocks iMessage send when target differs from current handle", async () => {
-    const result = await runDrySend({
-      cfg: whatsappConfig,
-      actionParams: {
-        channel: "imessage",
-        target: "imessage:+15551230000",
+        channel: "discord",
+        target: "user:999999999999999999",
         message: "hi",
       },
       toolContext: {
-        currentChannelId: "imessage:+15551234567",
-        currentChannelProvider: "imessage",
+        currentChannelId: "user:123456789012345678",
+        currentChannelProvider: "discord",
+      },
+    });
+
+    expect(result.kind).toBe("send");
+  });
+
+  it("allows Telegram send when target matches current chat", async () => {
+    const result = await runDrySend({
+      cfg: discordConfig2,
+      actionParams: {
+        channel: "telegram",
+        target: "telegram:123456",
+        message: "hi",
+      },
+      toolContext: { currentChannelId: "telegram:123456" },
+    });
+
+    expect(result.kind).toBe("send");
+  });
+
+  it("allows Telegram send when target differs and cross-context is allowed", async () => {
+    const result = await runDrySend({
+      cfg: discordConfig2,
+      actionParams: {
+        channel: "telegram",
+        target: "telegram:999999",
+        message: "hi",
+      },
+      toolContext: {
+        currentChannelId: "telegram:123456",
+        currentChannelProvider: "telegram",
       },
     });
 
@@ -276,10 +282,7 @@ describe("runMessageAction context isolation", () => {
   it("infers channel + target from tool context when missing", async () => {
     const multiConfig = {
       channels: {
-        slack: {
-          botToken: "xoxb-test",
-          appToken: "xapp-test",
-        },
+        discord: {},
         telegram: {
           token: "tg-test",
         },
@@ -291,30 +294,36 @@ describe("runMessageAction context isolation", () => {
       actionParams: {
         message: "hi",
       },
-      toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+      toolContext: {
+        currentChannelId: "channel:123456789012345678",
+        currentChannelProvider: "discord",
+      },
     });
 
     expect(result.kind).toBe("send");
-    expect(result.channel).toBe("slack");
+    expect(result.channel).toBe("discord");
   });
 
   it("blocks cross-provider sends by default", async () => {
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
           channel: "telegram",
           target: "telegram:@ops",
           message: "hi",
         },
-        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+        toolContext: {
+          currentChannelId: "channel:123456789012345678",
+          currentChannelProvider: "discord",
+        },
       }),
     ).rejects.toThrow(/Cross-context messaging denied/);
   });
 
   it("blocks same-provider cross-context when disabled", async () => {
     const cfg = {
-      ...slackConfig,
+      ...discordConfig,
       tools: {
         message: {
           crossContext: {
@@ -328,11 +337,14 @@ describe("runMessageAction context isolation", () => {
       runDrySend({
         cfg,
         actionParams: {
-          channel: "slack",
-          target: "channel:C99999999",
+          channel: "discord",
+          target: "channel:999999999999999999",
           message: "hi",
         },
-        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+        toolContext: {
+          currentChannelId: "channel:123456789012345678",
+          currentChannelProvider: "discord",
+        },
       }),
     ).rejects.toThrow(/Cross-context messaging denied/);
   });
@@ -343,10 +355,10 @@ describe("runMessageAction context isolation", () => {
 
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
-          channel: "slack",
-          target: "#C12345678",
+          channel: "discord",
+          target: "channel:123456789012345678",
           message: "hi",
         },
         abortSignal: controller.signal,
@@ -360,11 +372,11 @@ describe("runMessageAction context isolation", () => {
 
     await expect(
       runDryAction({
-        cfg: slackConfig,
+        cfg: discordConfig,
         action: "broadcast",
         actionParams: {
           targets: ["channel:C12345678"],
-          channel: "slack",
+          channel: "discord",
           message: "hi",
         },
         abortSignal: controller.signal,
@@ -492,15 +504,15 @@ describe("runMessageAction sendAttachment hydration", () => {
 describe("runMessageAction sandboxed media validation", () => {
   beforeEach(async () => {
     const { createPluginRuntime } = await import("../../plugins/runtime/index.js");
-    const { setSlackRuntime } = await import("../../../extensions/slack/src/runtime.js");
+    const { setDiscordRuntime } = await import("../../../extensions/discord/src/runtime.js");
     const runtime = createPluginRuntime();
-    setSlackRuntime(runtime);
+    setDiscordRuntime(runtime);
     setActivePluginRegistry(
       createTestRegistry([
         {
-          pluginId: "slack",
+          pluginId: "discord",
           source: "test",
-          plugin: slackPlugin,
+          plugin: discordPlugin,
         },
       ]),
     );
@@ -514,10 +526,10 @@ describe("runMessageAction sandboxed media validation", () => {
     await withSandbox(async (sandboxDir) => {
       await expect(
         runDrySend({
-          cfg: slackConfig,
+          cfg: discordConfig,
           actionParams: {
-            channel: "slack",
-            target: "#C12345678",
+            channel: "discord",
+            target: "channel:123456789012345678",
             media: "/etc/passwd",
             message: "",
           },
@@ -531,10 +543,10 @@ describe("runMessageAction sandboxed media validation", () => {
     await withSandbox(async (sandboxDir) => {
       await expect(
         runDrySend({
-          cfg: slackConfig,
+          cfg: discordConfig,
           actionParams: {
-            channel: "slack",
-            target: "#C12345678",
+            channel: "discord",
+            target: "channel:123456789012345678",
             media: "file:///etc/passwd",
             message: "",
           },
@@ -547,10 +559,10 @@ describe("runMessageAction sandboxed media validation", () => {
   it("rewrites sandbox-relative media paths", async () => {
     await withSandbox(async (sandboxDir) => {
       const result = await runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
-          channel: "slack",
-          target: "#C12345678",
+          channel: "discord",
+          target: "channel:123456789012345678",
           media: "./data/file.txt",
           message: "",
         },
@@ -565,10 +577,10 @@ describe("runMessageAction sandboxed media validation", () => {
   it("rewrites MEDIA directives under sandbox", async () => {
     await withSandbox(async (sandboxDir) => {
       const result = await runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
-          channel: "slack",
-          target: "#C12345678",
+          channel: "discord",
+          target: "channel:123456789012345678",
           message: "Hello\nMEDIA: ./data/note.ogg",
         },
         sandboxRoot: sandboxDir,
@@ -582,10 +594,10 @@ describe("runMessageAction sandboxed media validation", () => {
   it("rejects data URLs in media params", async () => {
     await expect(
       runDrySend({
-        cfg: slackConfig,
+        cfg: discordConfig,
         actionParams: {
-          channel: "slack",
-          target: "#C12345678",
+          channel: "discord",
+          target: "channel:123456789012345678",
           media: "data:image/png;base64,abcd",
           message: "",
         },

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { constants as fsConstants } from "node:fs";
+import { access } from "node:fs/promises";
 import module from "node:module";
 
 // https://nodejs.org/api/module.html#module-compile-cache
@@ -34,6 +36,33 @@ const installProcessWarningFilter = async () => {
 
 await installProcessWarningFilter();
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isWatchProcess =
+  process.env.OPENCLAW_WATCH_MODE === "1" || process.execArgv.includes("--watch");
+
+const fileExists = async (path) => {
+  try {
+    await access(path, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitForEntryBuildOutputIfWatchMode = async () => {
+  if (!isWatchProcess) {
+    return;
+  }
+  const deadlineMs = Date.now() + 120_000;
+  while (Date.now() < deadlineMs) {
+    if ((await fileExists("./dist/entry.js")) || (await fileExists("./dist/entry.mjs"))) {
+      return;
+    }
+    await sleep(50);
+  }
+};
+
 const tryImport = async (specifier) => {
   try {
     await import(specifier);
@@ -46,6 +75,8 @@ const tryImport = async (specifier) => {
     throw err;
   }
 };
+
+await waitForEntryBuildOutputIfWatchMode();
 
 if (await tryImport("./dist/entry.js")) {
   // OK

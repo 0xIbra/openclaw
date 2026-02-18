@@ -1,12 +1,139 @@
-import type { LineChannelData } from "../../line/types.js";
 import type { ReplyPayload } from "../types.js";
-import {
-  createMediaPlayerCard,
-  createEventCard,
-  createAgendaCard,
-  createDeviceControlCard,
-  createAppleTvRemoteCard,
-} from "../../line/flex-templates.js";
+
+type LineChannelData = {
+  quickReplies?: string[];
+  location?: {
+    title: string;
+    address: string;
+    latitude: number;
+    longitude: number;
+  };
+  templateMessage?: Record<string, unknown>;
+  flexMessage?: { altText?: string; contents?: Record<string, unknown> };
+};
+
+function createMediaPlayerCard(params: {
+  title: string;
+  subtitle?: string;
+  source?: string;
+  imageUrl?: string;
+  isPlaying?: boolean;
+  controls?: Record<string, { data: string }>;
+}) {
+  return {
+    type: "bubble",
+    hero: params.imageUrl ? { type: "image", url: params.imageUrl } : undefined,
+    body: {
+      type: "box",
+      contents: [
+        { type: "text", text: params.title },
+        ...(params.subtitle ? [{ type: "text", text: params.subtitle }] : []),
+        ...(params.source ? [{ type: "text", text: params.source }] : []),
+        ...(typeof params.isPlaying === "boolean"
+          ? [{ type: "text", text: params.isPlaying ? "Playing" : "Paused" }]
+          : []),
+      ],
+    },
+    footer: {
+      type: "box",
+      contents: Object.entries(params.controls ?? {}).map(([key, value]) => ({
+        type: "button",
+        action: { type: "postback", label: key, data: value.data },
+      })),
+    },
+  };
+}
+
+function createEventCard(params: {
+  title: string;
+  date: string;
+  time?: string;
+  location?: string;
+  description?: string;
+}) {
+  return {
+    type: "bubble",
+    body: {
+      type: "box",
+      contents: [
+        { type: "text", text: params.title },
+        { type: "text", text: params.date },
+        ...(params.time ? [{ type: "text", text: params.time }] : []),
+        ...(params.location ? [{ type: "text", text: params.location }] : []),
+        ...(params.description ? [{ type: "text", text: params.description }] : []),
+      ],
+    },
+  };
+}
+
+function createAgendaCard(params: {
+  title: string;
+  events: Array<{ title: string; time?: string }>;
+}) {
+  return {
+    type: "bubble",
+    body: {
+      type: "box",
+      contents: [
+        { type: "text", text: params.title },
+        ...params.events.map((event) => ({
+          type: "text",
+          text: event.time ? `${event.title}: ${event.time}` : event.title,
+        })),
+      ],
+    },
+  };
+}
+
+function createDeviceControlCard(params: {
+  deviceName: string;
+  deviceType?: string;
+  status?: string;
+  controls: Array<{ label: string; data: string }>;
+}) {
+  return {
+    type: "bubble",
+    body: {
+      type: "box",
+      contents: [
+        { type: "text", text: params.deviceName },
+        ...(params.deviceType ? [{ type: "text", text: params.deviceType }] : []),
+        ...(params.status ? [{ type: "text", text: params.status }] : []),
+      ],
+    },
+    footer: {
+      type: "box",
+      contents: params.controls.map((control) => ({
+        type: "button",
+        action: { type: "postback", label: control.label, data: control.data },
+      })),
+    },
+  };
+}
+
+function createAppleTvRemoteCard(params: {
+  deviceName: string;
+  status?: string;
+  actionData: Record<string, string>;
+}) {
+  return {
+    type: "bubble",
+    body: {
+      type: "box",
+      contents: [
+        { type: "text", text: params.deviceName },
+        ...(params.status ? [{ type: "text", text: params.status }] : []),
+      ],
+    },
+    footer: {
+      type: "box",
+      contents: Object.entries(params.actionData).map(([label, data]) => ({
+        type: "button",
+        action: { type: "postback", label, data },
+      })),
+    },
+  };
+}
 
 /**
  * Parse LINE-specific directives from text and extract them into ReplyPayload fields.

@@ -6,7 +6,6 @@ import { fetchChannelPermissionsDiscord } from "../../discord/send.js";
 import { parseDiscordTarget } from "../../discord/targets.js";
 import { danger } from "../../globals.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
-import { fetchSlackScopes, type SlackScopesResult } from "../../slack/scopes.js";
 import { theme } from "../../terminal/theme.js";
 import { formatChannelAccountLabel, requireValidConfig } from "./shared.js";
 
@@ -52,6 +51,24 @@ type ChannelCapabilitiesReport = {
   target?: DiscordTargetSummary;
   channelPermissions?: DiscordPermissionsReport;
 };
+
+type SlackScopesResult = {
+  ok?: boolean;
+  scopes?: string[];
+  missing?: string[];
+  error?: string;
+  source?: string;
+};
+
+async function fetchSlackScopesSafe(
+  _token: string,
+  _timeoutMs: number,
+): Promise<SlackScopesResult> {
+  return {
+    ok: false,
+    error: "Slack channel support removed.",
+  };
+}
 
 const REQUIRED_DISCORD_PERMISSIONS = ["ViewChannel", "SendMessages"] as const;
 
@@ -388,7 +405,7 @@ async function resolveChannelReports(params: {
       if (botToken) {
         scopeReports.push({
           tokenType: "bot",
-          result: await fetchSlackScopes(botToken, timeoutMs),
+          result: await fetchSlackScopesSafe(botToken, timeoutMs),
         });
       } else {
         scopeReports.push({
@@ -399,7 +416,7 @@ async function resolveChannelReports(params: {
       if (userToken) {
         scopeReports.push({
           tokenType: "user",
-          result: await fetchSlackScopes(userToken, timeoutMs),
+          result: await fetchSlackScopesSafe(userToken, timeoutMs),
         });
       }
       slackScopes = scopeReports;

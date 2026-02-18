@@ -5,7 +5,6 @@ import { listChannelPlugins } from "../channels/plugins/index.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { isLoopbackHost, resolveGatewayBindHost } from "../gateway/net.js";
-import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
 import { note } from "../terminal/note.js";
 
 export async function noteSecurityWarnings(cfg: OpenClawConfig) {
@@ -86,17 +85,12 @@ export async function noteSecurityWarnings(cfg: OpenClawConfig) {
     const policyPath = params.policyPath ?? `${params.allowFromPath}policy`;
     const configAllowFrom = (params.allowFrom ?? []).map((v) => String(v).trim());
     const hasWildcard = configAllowFrom.includes("*");
-    const storeAllowFrom = await readChannelAllowFromStore(params.provider).catch(() => []);
     const normalizedCfg = configAllowFrom
       .filter((v) => v !== "*")
       .map((v) => (params.normalizeEntry ? params.normalizeEntry(v) : v))
       .map((v) => v.trim())
       .filter(Boolean);
-    const normalizedStore = storeAllowFrom
-      .map((v) => (params.normalizeEntry ? params.normalizeEntry(v) : v))
-      .map((v) => v.trim())
-      .filter(Boolean);
-    const allowCount = Array.from(new Set([...normalizedCfg, ...normalizedStore])).length;
+    const allowCount = Array.from(new Set(normalizedCfg)).length;
     const dmScope = cfg.session?.dmScope ?? "main";
     const isMultiUserDm = hasWildcard || allowCount > 1;
 
@@ -117,7 +111,7 @@ export async function noteSecurityWarnings(cfg: OpenClawConfig) {
 
     if (dmPolicy !== "open" && allowCount === 0) {
       warnings.push(
-        `- ${params.label} DMs: locked (${policyPath}="${dmPolicy}") with no allowlist; unknown senders will be blocked / get a pairing code.`,
+        `- ${params.label} DMs: locked (${policyPath}="${dmPolicy}") with no allowlist; unknown senders will be blocked.`,
       );
       warnings.push(`  ${params.approveHint}`);
     }

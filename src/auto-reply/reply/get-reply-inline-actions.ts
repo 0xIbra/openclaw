@@ -376,7 +376,7 @@ export async function handleInlineActions(params: {
     abortedLastRun = getAbortMemory(command.abortKey) ?? false;
   }
 
-  const commandResult = await runCommands(command);
+  const commandResult = (await runCommands(command)) ?? { shouldContinue: true };
   if (!commandResult.shouldContinue) {
     typing.cleanup();
     return { kind: "reply", reply: commandResult.reply };

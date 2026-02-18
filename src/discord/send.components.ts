@@ -9,7 +9,7 @@ import { ChannelType, Routes } from "discord-api-types/v10";
 import type { DiscordSendResult } from "./send.types.js";
 import { loadConfig } from "../config/config.js";
 import { recordChannelActivity } from "../infra/channel-activity.js";
-import { loadWebMedia } from "../web/media.js";
+import { loadWebMedia } from "../media/web-media.js";
 import { resolveDiscordAccount } from "./accounts.js";
 import { registerDiscordComponentEntries } from "./components-registry.js";
 import {

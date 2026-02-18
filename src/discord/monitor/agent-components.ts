@@ -32,11 +32,6 @@ import { readSessionUpdatedAt, resolveStorePath } from "../../config/sessions.js
 import { logVerbose } from "../../globals.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { logDebug, logError } from "../../logger.js";
-import { buildPairingReply } from "../../pairing/pairing-messages.js";
-import {
-  readChannelAllowFromStore,
-  upsertChannelPairingRequest,
-} from "../../pairing/pairing-store.js";
 import { resolveAgentRoute } from "../../routing/resolve-route.js";
 import { createNonExitingRuntime, type RuntimeEnv } from "../../runtime.js";
 import { resolveDiscordComponentEntry, resolveDiscordModalEntry } from "../components-registry.js";
@@ -464,8 +459,7 @@ async function ensureDmComponentAuthorized(params: {
     return true;
   }
 
-  const storeAllowFrom = await readChannelAllowFromStore("discord").catch(() => []);
-  const effectiveAllowFrom = [...(ctx.allowFrom ?? []), ...storeAllowFrom];
+  const effectiveAllowFrom = ctx.allowFrom ?? [];
   const allowList = normalizeDiscordAllowList(effectiveAllowFrom, ["discord:", "user:", "pk:"]);
   const allowMatch = allowList
     ? resolveDiscordAllowListMatch({
@@ -482,23 +476,9 @@ async function ensureDmComponentAuthorized(params: {
   }
 
   if (dmPolicy === "pairing") {
-    const { code, created } = await upsertChannelPairingRequest({
-      channel: "discord",
-      id: user.id,
-      meta: {
-        tag: formatDiscordUserTag(user),
-        name: user.username,
-      },
-    });
     try {
       await interaction.reply({
-        content: created
-          ? buildPairingReply({
-              channel: "discord",
-              idLine: `Your Discord user id: ${user.id}`,
-              code,
-            })
-          : "Pairing already requested. Ask the bot owner to approve your code.",
+        content: "Pairing is not available.",
         ...replyOpts,
       });
     } catch {

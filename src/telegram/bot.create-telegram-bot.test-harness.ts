@@ -23,7 +23,7 @@ export function getLoadWebMediaMock(): AnyMock {
   return loadWebMedia;
 }
 
-vi.mock("../web/media.js", () => ({
+vi.mock("../media/web-media.js", () => ({
   loadWebMedia,
 }));
 
@@ -49,32 +49,6 @@ vi.mock("../config/sessions.js", async (importOriginal) => {
     resolveStorePath: vi.fn((storePath) => storePath ?? sessionStorePath),
   };
 });
-
-const { readChannelAllowFromStore, upsertChannelPairingRequest } = vi.hoisted(
-  (): {
-    readChannelAllowFromStore: AnyAsyncMock;
-    upsertChannelPairingRequest: AnyAsyncMock;
-  } => ({
-    readChannelAllowFromStore: vi.fn(async () => [] as string[]),
-    upsertChannelPairingRequest: vi.fn(async () => ({
-      code: "PAIRCODE",
-      created: true,
-    })),
-  }),
-);
-
-export function getReadChannelAllowFromStoreMock(): AnyAsyncMock {
-  return readChannelAllowFromStore;
-}
-
-export function getUpsertChannelPairingRequestMock(): AnyAsyncMock {
-  return upsertChannelPairingRequest;
-}
-
-vi.mock("../pairing/pairing-store.js", () => ({
-  readChannelAllowFromStore,
-  upsertChannelPairingRequest,
-}));
 
 const skillCommandsHoisted = vi.hoisted(() => ({
   listSkillCommandsForAgents: vi.fn(() => []),
@@ -269,10 +243,6 @@ beforeEach(() => {
     },
   });
   loadWebMedia.mockReset();
-  readChannelAllowFromStore.mockReset();
-  readChannelAllowFromStore.mockResolvedValue([]);
-  upsertChannelPairingRequest.mockReset();
-  upsertChannelPairingRequest.mockResolvedValue({ code: "PAIRCODE", created: true } as const);
   onSpy.mockReset();
   commandSpy.mockReset();
   stopSpy.mockReset();

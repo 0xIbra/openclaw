@@ -11,7 +11,6 @@ import {
   editMessageTextSpy,
   enqueueSystemEventSpy,
   getLoadConfigMock,
-  getReadChannelAllowFromStoreMock,
   getOnHandler,
   listSkillCommandsForAgents,
   onSpy,
@@ -23,7 +22,6 @@ import {
 import { createTelegramBot } from "./bot.js";
 
 const loadConfig = getLoadConfigMock();
-const readChannelAllowFromStore = getReadChannelAllowFromStoreMock();
 
 function resolveSkillCommands(config: Parameters<typeof listNativeCommandSpecsForConfig>[0]) {
   return listSkillCommandsForAgents({ cfg: config });
@@ -554,8 +552,6 @@ describe("createTelegramBot", () => {
         },
       },
     });
-    readChannelAllowFromStore.mockResolvedValueOnce(["123456789"]);
-
     createTelegramBot({ token: "tok" });
     const handler = getOnHandler("message") as (ctx: Record<string, unknown>) => Promise<void>;
 
@@ -589,8 +585,6 @@ describe("createTelegramBot", () => {
         },
       },
     });
-    readChannelAllowFromStore.mockResolvedValueOnce(["123456789"]);
-
     createTelegramBot({ token: "tok" });
     const handler = getOnHandler("message") as (ctx: Record<string, unknown>) => Promise<void>;
 
@@ -619,10 +613,10 @@ describe("createTelegramBot", () => {
       channels: {
         telegram: {
           dmPolicy: "pairing",
+          allowFrom: ["12345"],
         },
       },
     });
-    readChannelAllowFromStore.mockResolvedValueOnce(["12345"]);
 
     createTelegramBot({ token: "tok" });
     const handler = commandSpy.mock.calls.find((call) => call[0] === "status")?.[1] as
@@ -661,10 +655,10 @@ describe("createTelegramBot", () => {
       channels: {
         telegram: {
           dmPolicy: "pairing",
+          allowFrom: ["12345"],
         },
       },
     });
-    readChannelAllowFromStore.mockResolvedValueOnce(["12345"]);
 
     createTelegramBot({ token: "tok" });
     const handler = commandSpy.mock.calls.find((call) => call[0] === "status")?.[1] as
@@ -707,7 +701,6 @@ describe("createTelegramBot", () => {
         },
       },
     });
-    readChannelAllowFromStore.mockResolvedValueOnce([]);
 
     createTelegramBot({ token: "tok" });
     const handler = commandSpy.mock.calls.find((call) => call[0] === "status")?.[1] as

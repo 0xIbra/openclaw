@@ -123,7 +123,7 @@ describe("agent components", () => {
     enqueueSystemEventMock.mockReset();
   });
 
-  it("sends pairing reply when DM sender is not allowlisted", async () => {
+  it("returns explicit denial when DM sender is not allowlisted", async () => {
     const button = createAgentComponentButton({
       cfg: createCfg(),
       accountId: "default",
@@ -135,16 +135,18 @@ describe("agent components", () => {
 
     expect(defer).toHaveBeenCalledWith({ ephemeral: true });
     expect(reply).toHaveBeenCalledTimes(1);
-    expect(reply.mock.calls[0]?.[0]?.content).toContain("Pairing code: PAIRCODE");
+    expect(reply.mock.calls[0]?.[0]?.content).toContain("Pairing is not available.");
     expect(enqueueSystemEventMock).not.toHaveBeenCalled();
   });
 
-  it("allows DM interactions when pairing store allowlist matches", async () => {
-    readAllowFromStoreMock.mockResolvedValue(["123456789"]);
+  it("allows DM interactions when config allowlist matches", async () => {
     const button = createAgentComponentButton({
-      cfg: createCfg(),
+      cfg: {
+        channels: { discord: { allowFrom: ["123456789"], dm: { allowFrom: ["123456789"] } } },
+      } as OpenClawConfig,
       accountId: "default",
       dmPolicy: "allowlist",
+      allowFrom: ["123456789"],
     });
     const { interaction, defer, reply } = createDmButtonInteraction();
 

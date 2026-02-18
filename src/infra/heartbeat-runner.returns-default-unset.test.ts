@@ -5,7 +5,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { OpenClawConfig } from "../config/config.js";
 import { HEARTBEAT_PROMPT } from "../auto-reply/heartbeat.js";
 import * as replyModule from "../auto-reply/reply.js";
-import { whatsappOutbound } from "../channels/plugins/outbound/whatsapp.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveAgentMainSessionKey,
@@ -43,13 +42,6 @@ const createCaseDir = async (prefix: string) => {
 
 beforeAll(async () => {
   previousRegistry = getActivePluginRegistry();
-
-  const whatsappPlugin = createOutboundTestPlugin({ id: "whatsapp", outbound: whatsappOutbound });
-  whatsappPlugin.config = {
-    ...whatsappPlugin.config,
-    resolveAllowFrom: ({ cfg }) =>
-      cfg.channels?.whatsapp?.allowFrom?.map((entry) => String(entry)) ?? [],
-  };
 
   const telegramPlugin = createOutboundTestPlugin({
     id: "telegram",
@@ -92,7 +84,6 @@ beforeAll(async () => {
   };
 
   testRegistry = createTestRegistry([
-    { pluginId: "whatsapp", plugin: whatsappPlugin, source: "test" },
     { pluginId: "telegram", plugin: telegramPlugin, source: "test" },
   ]);
   setActivePluginRegistry(testRegistry);
@@ -222,30 +213,31 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     const cfg: OpenClawConfig = {};
     const entry = {
       ...baseEntry,
-      lastChannel: "whatsapp" as const,
+      lastChannel: "telegram" as const,
       lastTo: "+1555",
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry })).toEqual({
-      channel: "whatsapp",
+      channel: "telegram",
       to: "+1555",
       accountId: undefined,
-      lastChannel: "whatsapp",
+      lastChannel: "telegram",
       lastAccountId: undefined,
     });
   });
 
-  it("normalizes explicit WhatsApp targets when allowFrom is '*'", () => {
+  it("normalizes explicit Telegram targets when allowFrom is '*'", () => {
     const cfg: OpenClawConfig = {
       agents: {
         defaults: {
-          heartbeat: { target: "whatsapp", to: "whatsapp:(555) 123" },
+          heartbeat: { target: "telegram", to: "telegram:555123" },
         },
       },
-      channels: { whatsapp: { allowFrom: ["*"] } },
+      channels: { telegram: { allowFrom: ["*"] } },
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry: baseEntry })).toEqual({
-      channel: "whatsapp",
-      to: "+555123",
+      channel: "telegram",
+      to: "telegram:555123",
+      reason: undefined,
       accountId: undefined,
       lastChannel: undefined,
       lastAccountId: undefined,
@@ -268,39 +260,41 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     });
   });
 
-  it("rejects WhatsApp target not in allowFrom (no silent fallback)", () => {
+  it("keeps explicit Telegram target even when allowFrom does not include it", () => {
     const cfg: OpenClawConfig = {
-      agents: { defaults: { heartbeat: { target: "whatsapp", to: "+1999" } } },
-      channels: { whatsapp: { allowFrom: ["+1555", "+1666"] } },
+      agents: { defaults: { heartbeat: { target: "telegram", to: "+1999" } } },
+      channels: { telegram: { allowFrom: ["+1555", "+1666"] } },
     };
     const entry = {
       ...baseEntry,
-      lastChannel: "whatsapp" as const,
+      lastChannel: "telegram" as const,
       lastTo: "+1222",
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry })).toEqual({
-      channel: "none",
-      reason: "no-target",
+      channel: "telegram",
+      to: "+1999",
+      reason: undefined,
       accountId: undefined,
-      lastChannel: "whatsapp",
+      lastChannel: "telegram",
       lastAccountId: undefined,
     });
   });
 
-  it("normalizes prefixed WhatsApp group targets for heartbeat delivery", () => {
+  it("normalizes prefixed Telegram group targets for heartbeat delivery", () => {
     const cfg: OpenClawConfig = {
-      channels: { whatsapp: { allowFrom: ["+1555"] } },
+      channels: { telegram: { allowFrom: ["+1555"] } },
     };
     const entry = {
       ...baseEntry,
-      lastChannel: "whatsapp" as const,
-      lastTo: "whatsapp:120363401234567890@G.US",
+      lastChannel: "telegram" as const,
+      lastTo: "telegram:120363401234567890",
     };
     expect(resolveHeartbeatDeliveryTarget({ cfg, entry })).toEqual({
-      channel: "whatsapp",
-      to: "120363401234567890@g.us",
+      channel: "telegram",
+      to: "telegram:120363401234567890",
+      reason: undefined,
       accountId: undefined,
-      lastChannel: "whatsapp",
+      lastChannel: "telegram",
       lastAccountId: undefined,
     });
   });
@@ -345,18 +339,18 @@ describe("resolveHeartbeatDeliveryTarget", () => {
     const cfg: OpenClawConfig = {
       agents: { defaults: { heartbeat: { target: "telegram", to: "123" } } },
     };
-    const heartbeat = { target: "whatsapp", to: "+1555" } as const;
+    const heartbeat = { target: "telegram", to: "+1555" } as const;
     expect(
       resolveHeartbeatDeliveryTarget({
         cfg,
-        entry: { ...baseEntry, lastChannel: "whatsapp", lastTo: "+1999" },
+        entry: { ...baseEntry, lastChannel: "telegram", lastTo: "+1999" },
         heartbeat,
       }),
     ).toEqual({
-      channel: "whatsapp",
+      channel: "telegram",
       to: "+1555",
       accountId: undefined,
-      lastChannel: "whatsapp",
+      lastChannel: "telegram",
       lastAccountId: undefined,
     });
   });
@@ -444,10 +438,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: tmpDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -458,14 +452,14 @@ describe("runHeartbeatOnce", () => {
           [sessionKey]: {
             sessionId: "sid",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
+            lastChannel: "telegram",
             lastTo: "+1555",
           },
         }),
       );
 
       replySpy.mockResolvedValue([{ text: "Let me check..." }, { text: "Final alert" }]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -473,7 +467,7 @@ describe("runHeartbeatOnce", () => {
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -481,8 +475,8 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
     } finally {
       replySpy.mockRestore();
     }
@@ -502,11 +496,11 @@ describe("runHeartbeatOnce", () => {
             { id: "main", default: true },
             {
               id: "ops",
-              heartbeat: { every: "5m", target: "whatsapp", prompt: "Ops check" },
+              heartbeat: { every: "5m", target: "telegram", prompt: "Ops check" },
             },
           ],
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "ops" });
@@ -517,13 +511,13 @@ describe("runHeartbeatOnce", () => {
           [sessionKey]: {
             sessionId: "sid",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
+            lastChannel: "telegram",
             lastTo: "+1555",
           },
         }),
       );
       replySpy.mockResolvedValue([{ text: "Final alert" }]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -531,15 +525,15 @@ describe("runHeartbeatOnce", () => {
         cfg,
         agentId: "ops",
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
           hasActiveWebListener: () => true,
         },
       });
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({
           Body: expect.stringMatching(/Ops check[\s\S]*Current time: /),
@@ -568,11 +562,11 @@ describe("runHeartbeatOnce", () => {
             { id: "main", default: true },
             {
               id: agentId,
-              heartbeat: { every: "5m", target: "whatsapp", prompt: "Ops check" },
+              heartbeat: { every: "5m", target: "telegram", prompt: "Ops check" },
             },
           ],
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storeTemplate },
       };
       const sessionKey = resolveAgentMainSessionKey({ cfg, agentId });
@@ -591,7 +585,7 @@ describe("runHeartbeatOnce", () => {
               sessionId,
               sessionFile,
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
+              lastChannel: "telegram",
               lastTo: "+1555",
             },
           },
@@ -601,7 +595,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue([{ text: "Final alert" }]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -609,7 +603,7 @@ describe("runHeartbeatOnce", () => {
         cfg,
         agentId,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -618,8 +612,8 @@ describe("runHeartbeatOnce", () => {
       });
 
       expect(result.status).toBe("ran");
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({ SessionKey: sessionKey }),
         expect.objectContaining({ isHeartbeat: true }),
@@ -646,14 +640,14 @@ describe("runHeartbeatOnce", () => {
             },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const mainSessionKey = resolveMainSessionKey(cfg);
       const agentId = resolveAgentIdFromSessionKey(mainSessionKey);
       const groupSessionKey = buildAgentPeerSessionKey({
         agentId,
-        channel: "whatsapp",
+        channel: "telegram",
         peerKind: "group",
         peerId: groupId,
       });
@@ -667,20 +661,20 @@ describe("runHeartbeatOnce", () => {
           [mainSessionKey]: {
             sessionId: "sid-main",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
+            lastChannel: "telegram",
             lastTo: "+1555",
           },
           [groupSessionKey]: {
             sessionId: "sid-group",
             updatedAt: Date.now() + 10_000,
-            lastChannel: "whatsapp",
+            lastChannel: "telegram",
             lastTo: groupId,
           },
         }),
       );
 
       replySpy.mockResolvedValue([{ text: "Group alert" }]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -688,7 +682,7 @@ describe("runHeartbeatOnce", () => {
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -696,8 +690,8 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith(groupId, "Group alert", expect.any(Object));
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith(groupId, "Group alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({ SessionKey: groupSessionKey }),
         expect.objectContaining({ isHeartbeat: true }),
@@ -717,10 +711,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: tmpDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -731,7 +725,7 @@ describe("runHeartbeatOnce", () => {
           [sessionKey]: {
             sessionId: "sid",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
+            lastChannel: "telegram",
             lastTo: "+1555",
             lastHeartbeatText: "Final alert",
             lastHeartbeatSentAt: 0,
@@ -740,12 +734,12 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue([{ text: "Final alert" }]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({ messageId: "m1", toJid: "jid" });
+      const sendTelegram = vi.fn().mockResolvedValue({ messageId: "m1", toJid: "jid" });
 
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 60_000,
           webAuthExists: async () => true,
@@ -753,7 +747,7 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(0);
+      expect(sendTelegram).toHaveBeenCalledTimes(0);
     } finally {
       replySpy.mockRestore();
     }
@@ -770,12 +764,12 @@ describe("runHeartbeatOnce", () => {
             workspace: tmpDir,
             heartbeat: {
               every: "5m",
-              target: "whatsapp",
+              target: "telegram",
               includeReasoning: true,
             },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -786,8 +780,8 @@ describe("runHeartbeatOnce", () => {
           [sessionKey]: {
             sessionId: "sid",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
-            lastProvider: "whatsapp",
+            lastChannel: "telegram",
+            lastProvider: "telegram",
             lastTo: "+1555",
           },
         }),
@@ -797,7 +791,7 @@ describe("runHeartbeatOnce", () => {
         { text: "Reasoning:\n_Because it helps_" },
         { text: "Final alert" },
       ]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -805,7 +799,7 @@ describe("runHeartbeatOnce", () => {
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -813,14 +807,14 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(2);
-      expect(sendWhatsApp).toHaveBeenNthCalledWith(
+      expect(sendTelegram).toHaveBeenCalledTimes(2);
+      expect(sendTelegram).toHaveBeenNthCalledWith(
         1,
         "+1555",
         "Reasoning:\n_Because it helps_",
         expect.any(Object),
       );
-      expect(sendWhatsApp).toHaveBeenNthCalledWith(2, "+1555", "Final alert", expect.any(Object));
+      expect(sendTelegram).toHaveBeenNthCalledWith(2, "+1555", "Final alert", expect.any(Object));
     } finally {
       replySpy.mockRestore();
     }
@@ -837,12 +831,12 @@ describe("runHeartbeatOnce", () => {
             workspace: tmpDir,
             heartbeat: {
               every: "5m",
-              target: "whatsapp",
+              target: "telegram",
               includeReasoning: true,
             },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -853,8 +847,8 @@ describe("runHeartbeatOnce", () => {
           [sessionKey]: {
             sessionId: "sid",
             updatedAt: Date.now(),
-            lastChannel: "whatsapp",
-            lastProvider: "whatsapp",
+            lastChannel: "telegram",
+            lastProvider: "telegram",
             lastTo: "+1555",
           },
         }),
@@ -864,7 +858,7 @@ describe("runHeartbeatOnce", () => {
         { text: "Reasoning:\n_Because it helps_" },
         { text: "HEARTBEAT_OK" },
       ]);
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -872,7 +866,7 @@ describe("runHeartbeatOnce", () => {
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -880,8 +874,8 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenNthCalledWith(
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenNthCalledWith(
         1,
         "+1555",
         "Reasoning:\n_Because it helps_",
@@ -902,7 +896,7 @@ describe("runHeartbeatOnce", () => {
           defaults: { workspace: tmpDir, heartbeat: { every: "5m" } },
           list: [{ id: "work", default: true }],
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storeTemplate },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -917,8 +911,8 @@ describe("runHeartbeatOnce", () => {
             [sessionKey]: {
               sessionId: "sid",
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
-              lastProvider: "whatsapp",
+              lastChannel: "telegram",
+              lastProvider: "telegram",
               lastTo: "+1555",
             },
           },
@@ -928,7 +922,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue({ text: "Hello from heartbeat" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -936,7 +930,7 @@ describe("runHeartbeatOnce", () => {
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -944,8 +938,8 @@ describe("runHeartbeatOnce", () => {
         },
       });
 
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
-      expect(sendWhatsApp).toHaveBeenCalledWith(
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledWith(
         "+1555",
         "Hello from heartbeat",
         expect.any(Object),
@@ -974,10 +968,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: workspaceDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -989,7 +983,7 @@ describe("runHeartbeatOnce", () => {
             [sessionKey]: {
               sessionId: "sid",
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
+              lastChannel: "telegram",
               lastTo: "+1555",
             },
           },
@@ -998,7 +992,7 @@ describe("runHeartbeatOnce", () => {
         ),
       );
 
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -1006,7 +1000,7 @@ describe("runHeartbeatOnce", () => {
       const res = await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -1020,7 +1014,7 @@ describe("runHeartbeatOnce", () => {
         expect(res.reason).toBe("empty-heartbeat-file");
       }
       expect(replySpy).not.toHaveBeenCalled();
-      expect(sendWhatsApp).not.toHaveBeenCalled();
+      expect(sendTelegram).not.toHaveBeenCalled();
     } finally {
       replySpy.mockRestore();
     }
@@ -1043,10 +1037,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: workspaceDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -1058,7 +1052,7 @@ describe("runHeartbeatOnce", () => {
             [sessionKey]: {
               sessionId: "sid",
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
+              lastChannel: "telegram",
               lastTo: "+1555",
             },
           },
@@ -1068,7 +1062,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue({ text: "wake event processed" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -1077,7 +1071,7 @@ describe("runHeartbeatOnce", () => {
         cfg,
         reason: "wake",
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -1087,7 +1081,7 @@ describe("runHeartbeatOnce", () => {
 
       expect(res.status).toBe("ran");
       expect(replySpy).toHaveBeenCalled();
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
     } finally {
       replySpy.mockRestore();
     }
@@ -1112,10 +1106,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: workspaceDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -1127,7 +1121,7 @@ describe("runHeartbeatOnce", () => {
             [sessionKey]: {
               sessionId: "sid",
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
+              lastChannel: "telegram",
               lastTo: "+1555",
             },
           },
@@ -1137,7 +1131,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue({ text: "Checked logs and PRs" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -1145,7 +1139,7 @@ describe("runHeartbeatOnce", () => {
       const res = await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,
@@ -1156,7 +1150,7 @@ describe("runHeartbeatOnce", () => {
       // Should run and make API call
       expect(res.status).toBe("ran");
       expect(replySpy).toHaveBeenCalled();
-      expect(sendWhatsApp).toHaveBeenCalledTimes(1);
+      expect(sendTelegram).toHaveBeenCalledTimes(1);
     } finally {
       replySpy.mockRestore();
     }
@@ -1175,10 +1169,10 @@ describe("runHeartbeatOnce", () => {
         agents: {
           defaults: {
             workspace: workspaceDir,
-            heartbeat: { every: "5m", target: "whatsapp" },
+            heartbeat: { every: "5m", target: "telegram" },
           },
         },
-        channels: { whatsapp: { allowFrom: ["*"] } },
+        channels: { telegram: { allowFrom: ["*"] } },
         session: { store: storePath },
       };
       const sessionKey = resolveMainSessionKey(cfg);
@@ -1190,7 +1184,7 @@ describe("runHeartbeatOnce", () => {
             [sessionKey]: {
               sessionId: "sid",
               updatedAt: Date.now(),
-              lastChannel: "whatsapp",
+              lastChannel: "telegram",
               lastTo: "+1555",
             },
           },
@@ -1200,7 +1194,7 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockResolvedValue({ text: "HEARTBEAT_OK" });
-      const sendWhatsApp = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
         toJid: "jid",
       });
@@ -1208,7 +1202,7 @@ describe("runHeartbeatOnce", () => {
       const res = await runHeartbeatOnce({
         cfg,
         deps: {
-          sendWhatsApp,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
           webAuthExists: async () => true,

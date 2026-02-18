@@ -11,7 +11,7 @@ import { installHeartbeatRunnerTestRuntime } from "./heartbeat-runner.test-harne
 // Avoid pulling optional runtime deps during isolated runs.
 vi.mock("jiti", () => ({ createJiti: () => () => ({}) }));
 
-installHeartbeatRunnerTestRuntime({ includeSlack: true });
+installHeartbeatRunnerTestRuntime();
 
 describe("runHeartbeatOnce", () => {
   it("uses the delivery target as sender when lastTo differs", async () => {
@@ -25,8 +25,8 @@ describe("runHeartbeatOnce", () => {
             workspace: tmpDir,
             heartbeat: {
               every: "5m",
-              target: "slack",
-              to: "C0A9P2N8QHY",
+              target: "telegram",
+              to: "1644620762",
             },
           },
         },
@@ -43,7 +43,7 @@ describe("runHeartbeatOnce", () => {
               updatedAt: Date.now(),
               lastChannel: "telegram",
               lastProvider: "telegram",
-              lastTo: "1644620762",
+              lastTo: "99999",
             },
           },
           null,
@@ -52,26 +52,26 @@ describe("runHeartbeatOnce", () => {
       );
 
       replySpy.mockImplementation(async (ctx) => {
-        expect(ctx.To).toBe("C0A9P2N8QHY");
-        expect(ctx.From).toBe("C0A9P2N8QHY");
+        expect(ctx.To).toBe("1644620762");
+        expect(ctx.From).toBe("1644620762");
         return { text: "ok" };
       });
 
-      const sendSlack = vi.fn().mockResolvedValue({
+      const sendTelegram = vi.fn().mockResolvedValue({
         messageId: "m1",
-        channelId: "C0A9P2N8QHY",
+        chatId: "1644620762",
       });
 
       await runHeartbeatOnce({
         cfg,
         deps: {
-          sendSlack,
+          sendTelegram,
           getQueueSize: () => 0,
           nowMs: () => 0,
         },
       });
 
-      expect(sendSlack).toHaveBeenCalled();
+      expect(sendTelegram).toHaveBeenCalled();
     } finally {
       replySpy.mockRestore();
       await fs.rm(tmpDir, { recursive: true, force: true });
