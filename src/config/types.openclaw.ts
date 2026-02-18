@@ -5,12 +5,7 @@ import type { DiagnosticsConfig, LoggingConfig, SessionConfig, WebConfig } from 
 import type { BrowserConfig } from "./types.browser.js";
 import type { ChannelsConfig } from "./types.channels.js";
 import type { CronConfig } from "./types.cron.js";
-import type {
-  CanvasHostConfig,
-  DiscoveryConfig,
-  GatewayConfig,
-  TalkConfig,
-} from "./types.gateway.js";
+import type { CanvasHostConfig, DiscoveryConfig, GatewayConfig } from "./types.gateway.js";
 import type { HooksConfig } from "./types.hooks.js";
 import type { MemoryConfig } from "./types.memory.js";
 import type {
@@ -94,7 +89,6 @@ export type OpenClawConfig = {
   hooks?: HooksConfig;
   discovery?: DiscoveryConfig;
   canvasHost?: CanvasHostConfig;
-  talk?: TalkConfig;
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
 };

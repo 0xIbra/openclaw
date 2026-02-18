@@ -388,9 +388,6 @@ export async function startGatewayServer(
   const nodeSubscribe = nodeSubscriptions.subscribe;
   const nodeUnsubscribe = nodeSubscriptions.unsubscribe;
   const nodeUnsubscribeAll = nodeSubscriptions.unsubscribeAll;
-  const broadcastVoiceWakeChanged = (triggers: string[]) => {
-    broadcast("voicewake.changed", { triggers }, { dropIfSlow: true });
-  };
   const hasMobileNodeConnected = () => hasConnectedMobileNode(nodeRegistry);
   applyGatewayLaneConcurrency(cfgAtStart);
 
@@ -585,7 +582,6 @@ export async function startGatewayServer(
       stopChannel,
       markChannelLoggedOut,
       wizardRunner,
-      broadcastVoiceWakeChanged,
     },
   });
   logGatewayStartup({

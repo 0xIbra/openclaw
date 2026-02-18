@@ -24,7 +24,6 @@ import {
   applyMessageDefaults,
   applyModelDefaults,
   applySessionDefaults,
-  applyTalkApiKey,
 } from "./defaults.js";
 import { restoreEnvVarRefs } from "./env-preserve.js";
 import {
@@ -59,7 +58,7 @@ const SHELL_ENV_EXPECTED_KEYS = [
   "AI_GATEWAY_API_KEY",
   "MINIMAX_API_KEY",
   "SYNTHETIC_API_KEY",
-  "ELEVENLABS_API_KEY",
+
   "TELEGRAM_BOT_TOKEN",
   "DISCORD_BOT_TOKEN",
   "SLACK_BOT_TOKEN",
@@ -631,12 +630,10 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     const exists = deps.fs.existsSync(configPath);
     if (!exists) {
       const hash = hashConfigRaw(null);
-      const config = applyTalkApiKey(
-        applyModelDefaults(
-          applyCompactionDefaults(
-            applyContextPruningDefaults(
-              applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
-            ),
+      const config = applyModelDefaults(
+        applyCompactionDefaults(
+          applyContextPruningDefaults(
+            applyAgentDefaults(applySessionDefaults(applyMessageDefaults({}))),
           ),
         ),
       );
@@ -765,13 +762,9 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           resolved: coerceConfig(resolvedConfigRaw),
           valid: true,
           config: normalizeConfigPaths(
-            applyTalkApiKey(
-              applyModelDefaults(
-                applyAgentDefaults(
-                  applySessionDefaults(
-                    applyLoggingDefaults(applyMessageDefaults(validated.config)),
-                  ),
-                ),
+            applyModelDefaults(
+              applyAgentDefaults(
+                applySessionDefaults(applyLoggingDefaults(applyMessageDefaults(validated.config))),
               ),
             ),
           ),

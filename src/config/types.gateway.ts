@@ -46,21 +46,6 @@ export type CanvasHostConfig = {
   liveReload?: boolean;
 };
 
-export type TalkConfig = {
-  /** Default ElevenLabs voice ID for Talk mode. */
-  voiceId?: string;
-  /** Optional voice name -> ElevenLabs voice ID map. */
-  voiceAliases?: Record<string, string>;
-  /** Default ElevenLabs model ID for Talk mode. */
-  modelId?: string;
-  /** Default ElevenLabs output format (e.g. mp3_44100_128). */
-  outputFormat?: string;
-  /** ElevenLabs API key (optional; falls back to ELEVENLABS_API_KEY). */
-  apiKey?: string;
-  /** Stop speaking when user starts talking (default: true). */
-  interruptOnSpeech?: boolean;
-};
-
 export type GatewayControlUiConfig = {
   /** If false, the Gateway will not serve the Control UI (default /). */
   enabled?: boolean;

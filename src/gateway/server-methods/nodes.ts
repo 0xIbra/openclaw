@@ -477,7 +477,6 @@ export const nodeHandlers: GatewayRequestHandlers = {
         nodeSendToSession: context.nodeSendToSession,
         nodeSubscribe: context.nodeSubscribe,
         nodeUnsubscribe: context.nodeUnsubscribe,
-        broadcastVoiceWakeChanged: context.broadcastVoiceWakeChanged,
         addChatRun: context.addChatRun,
         removeChatRun: context.removeChatRun,
         chatAbortControllers: context.chatAbortControllers,

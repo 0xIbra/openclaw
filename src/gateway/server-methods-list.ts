@@ -24,8 +24,7 @@ const BASE_METHODS = [
   "wizard.next",
   "wizard.cancel",
   "wizard.status",
-  "talk.config",
-  "talk.mode",
+
   "models.list",
   "agents.list",
   "agents.create",
@@ -39,8 +38,7 @@ const BASE_METHODS = [
   "skills.install",
   "skills.update",
   "update.run",
-  "voicewake.get",
-  "voicewake.set",
+
   "sessions.list",
   "sessions.preview",
   "sessions.patch",
@@ -97,7 +95,7 @@ export const GATEWAY_EVENTS = [
   "chat",
   "presence",
   "tick",
-  "talk.mode",
+
   "shutdown",
   "health",
   "heartbeat",
@@ -107,7 +105,7 @@ export const GATEWAY_EVENTS = [
   "node.invoke.request",
   "device.pair.requested",
   "device.pair.resolved",
-  "voicewake.changed",
+
   "exec.approval.requested",
   "exec.approval.resolved",
 ];

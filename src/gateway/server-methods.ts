@@ -18,10 +18,8 @@ import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { systemHandlers } from "./server-methods/system.js";
-import { talkHandlers } from "./server-methods/talk.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
-import { voicewakeHandlers } from "./server-methods/voicewake.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
 
 const ADMIN_SCOPE = "operator.admin";
@@ -56,7 +54,7 @@ const READ_METHODS = new Set([
   "agents.list",
   "agent.identity.get",
   "skills.status",
-  "voicewake.get",
+
   "sessions.list",
   "sessions.preview",
   "cron.list",
@@ -68,15 +66,13 @@ const READ_METHODS = new Set([
   "node.describe",
   "chat.history",
   "config.get",
-  "talk.config",
 ]);
 const WRITE_METHODS = new Set([
   "send",
   "agent",
   "agent.wait",
   "wake",
-  "talk.mode",
-  "voicewake.set",
+
   "node.invoke",
   "chat.send",
   "chat.abort",
@@ -158,7 +154,7 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
 export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...connectHandlers,
   ...logsHandlers,
-  ...voicewakeHandlers,
+
   ...healthHandlers,
   ...channelsHandlers,
   ...chatHandlers,
@@ -168,7 +164,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...modelsHandlers,
   ...configHandlers,
   ...wizardHandlers,
-  ...talkHandlers,
+
   ...skillsHandlers,
   ...sessionsHandlers,
   ...systemHandlers,

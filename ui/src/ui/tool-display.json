@@ -199,7 +199,6 @@
         "roleRemove": { "label": "role remove", "detailKeys": ["guildId", "userId", "roleId"] },
         "channelInfo": { "label": "channel", "detailKeys": ["channelId"] },
         "channelList": { "label": "channels", "detailKeys": ["guildId"] },
-        "voiceStatus": { "label": "voice", "detailKeys": ["guildId", "userId"] },
         "eventList": { "label": "events", "detailKeys": ["guildId"] },
         "eventCreate": { "label": "event create", "detailKeys": ["guildId", "name"] },
         "timeout": { "label": "timeout", "detailKeys": ["guildId", "userId"] },

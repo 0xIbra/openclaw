@@ -44,10 +44,6 @@ import {
   AgentWaitParamsSchema,
   type ChannelsLogoutParams,
   ChannelsLogoutParamsSchema,
-  type TalkConfigParams,
-  TalkConfigParamsSchema,
-  type TalkConfigResult,
-  TalkConfigResultSchema,
   type ChannelsStatusParams,
   ChannelsStatusParamsSchema,
   type ChannelsStatusResult,
@@ -194,8 +190,6 @@ import {
   SnapshotSchema,
   type StateVersion,
   StateVersionSchema,
-  type TalkModeParams,
-  TalkModeParamsSchema,
   type TickEvent,
   TickEventSchema,
   type UpdateRunParams,
@@ -299,8 +293,7 @@ export const validateWizardStartParams = ajv.compile<WizardStartParams>(WizardSt
 export const validateWizardNextParams = ajv.compile<WizardNextParams>(WizardNextParamsSchema);
 export const validateWizardCancelParams = ajv.compile<WizardCancelParams>(WizardCancelParamsSchema);
 export const validateWizardStatusParams = ajv.compile<WizardStatusParams>(WizardStatusParamsSchema);
-export const validateTalkModeParams = ajv.compile<TalkModeParams>(TalkModeParamsSchema);
-export const validateTalkConfigParams = ajv.compile<TalkConfigParams>(TalkConfigParamsSchema);
+
 export const validateChannelsStatusParams = ajv.compile<ChannelsStatusParams>(
   ChannelsStatusParamsSchema,
 );
@@ -444,8 +437,6 @@ export {
   WizardNextResultSchema,
   WizardStartResultSchema,
   WizardStatusResultSchema,
-  TalkConfigParamsSchema,
-  TalkConfigResultSchema,
   ChannelsStatusParamsSchema,
   ChannelsStatusResultSchema,
   ChannelsLogoutParamsSchema,
@@ -530,9 +521,6 @@ export type {
   WizardNextResult,
   WizardStartResult,
   WizardStatusResult,
-  TalkConfigParams,
-  TalkConfigResult,
-  TalkModeParams,
   ChannelsStatusParams,
   ChannelsStatusResult,
   ChannelsLogoutParams,
