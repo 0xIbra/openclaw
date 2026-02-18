@@ -12,6 +12,7 @@ export { applyPathPrepend, normalizePathPrepend } from "../infra/path-prepend.js
 import type { ManagedRun } from "../process/supervisor/index.js";
 import { logWarn } from "../logger.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
+import { scrubText } from "../secrets/scrub-middleware.js";
 import {
   addSession,
   appendOutput,
@@ -238,7 +239,9 @@ function maybeNotifyOnExit(session: ProcessSession, status: "completed" | "faile
     ? `signal ${session.exitSignal}`
     : `code ${session.exitCode ?? 0}`;
   const output = compactNotifyOutput(
-    tail(session.tail || session.aggregated || "", DEFAULT_NOTIFY_TAIL_CHARS),
+    scrubText(tail(session.tail || session.aggregated || "", DEFAULT_NOTIFY_TAIL_CHARS), {
+      context: "terminal",
+    }),
   );
   if (status === "completed" && !output && session.notifyOnExitEmptySuccess !== true) {
     return;
@@ -336,16 +339,17 @@ export async function runExecProcess(opts: {
       return;
     }
     const tailText = session.tail || session.aggregated;
+    const scrubbedTail = scrubText(tailText || "", { context: "terminal" });
     const warningText = opts.warnings.length ? `${opts.warnings.join("\n")}\n\n` : "";
     opts.onUpdate({
-      content: [{ type: "text", text: warningText + (tailText || "") }],
+      content: [{ type: "text", text: warningText + scrubbedTail }],
       details: {
         status: "running",
         sessionId,
         pid: session.pid ?? undefined,
         startedAt,
         cwd: session.cwd,
-        tail: session.tail,
+        tail: scrubbedTail,
       },
     });
   };
@@ -514,7 +518,7 @@ export async function runExecProcess(opts: {
       if (!session.child && session.stdin) {
         session.stdin.destroyed = true;
       }
-      const aggregated = session.aggregated.trim();
+      const aggregated = scrubText(session.aggregated.trim(), { context: "terminal" });
       if (status === "completed") {
         return {
           status: "completed",
@@ -548,7 +552,7 @@ export async function runExecProcess(opts: {
     .catch((err): ExecProcessOutcome => {
       markExited(session, null, null, "failed");
       maybeNotifyOnExit(session, "failed");
-      const aggregated = session.aggregated.trim();
+      const aggregated = scrubText(session.aggregated.trim(), { context: "terminal" });
       const message = aggregated ? `${aggregated}\n\n${String(err)}` : String(err);
       return {
         status: "failed",

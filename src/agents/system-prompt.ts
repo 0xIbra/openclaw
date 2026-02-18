@@ -3,6 +3,7 @@ import type { MemoryCitationsMode } from "../config/types.memory.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { scrubText } from "../secrets/scrub-middleware.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
 
@@ -394,6 +395,15 @@ export function buildAgentSystemPrompt(params: {
     "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
     "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
     "",
+    "## Secrets Safety",
+    "OpenClaw enforces strict secret protection. The scrubber automatically replaces known secrets with [REDACTED: name] placeholders before any text reaches you.",
+    "Rules:",
+    "- NEVER include raw API keys, tokens, passwords, or connection strings in your responses.",
+    "- If you need to use a secret (e.g., for a command or API call), request it by name via the secrets injection API — the runtime will inject it at execution time without exposing it to you.",
+    "- If you see [REDACTED: ...] placeholders in context, do not attempt to reconstruct or guess the original values.",
+    "- Environment variables matching known secret patterns (*_SECRET, *_KEY, *_TOKEN, *_PASSWORD, DATABASE_URL, etc.) are automatically protected.",
+    "- Files matching deny-list patterns (*.pem, *.key, id_rsa, credentials, etc.) must not be read or sent.",
+    "",
   ];
   const skillsSection = buildSkillsSection({
     skillsPrompt,
@@ -655,7 +665,8 @@ export function buildAgentSystemPrompt(params: {
     `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
   );
 
-  return lines.filter(Boolean).join("\n");
+  const assembled = lines.filter(Boolean).join("\n");
+  return scrubText(assembled, { context: "prompt" });
 }
 
 export function buildRuntimeLine(

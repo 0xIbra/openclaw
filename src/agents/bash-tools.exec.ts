@@ -27,6 +27,7 @@ import {
 } from "../infra/shell-env.js";
 import { logInfo } from "../logger.js";
 import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import { scrubText } from "../secrets/scrub-middleware.js";
 import { markBackgrounded, tail } from "./bash-process-registry.js";
 import {
   DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS,
@@ -674,9 +675,18 @@ export function createExecTool(
           raw && typeof raw === "object" ? (raw as { payload?: unknown }).payload : undefined;
         const payloadObj =
           payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
-        const stdout = typeof payloadObj.stdout === "string" ? payloadObj.stdout : "";
-        const stderr = typeof payloadObj.stderr === "string" ? payloadObj.stderr : "";
-        const errorText = typeof payloadObj.error === "string" ? payloadObj.error : "";
+        const stdout = scrubText(typeof payloadObj.stdout === "string" ? payloadObj.stdout : "", {
+          context: "terminal",
+          agentId: agentId ?? null,
+        });
+        const stderr = scrubText(typeof payloadObj.stderr === "string" ? payloadObj.stderr : "", {
+          context: "terminal",
+          agentId: agentId ?? null,
+        });
+        const errorText = scrubText(typeof payloadObj.error === "string" ? payloadObj.error : "", {
+          context: "terminal",
+          agentId: agentId ?? null,
+        });
         const success = typeof payloadObj.success === "boolean" ? payloadObj.success : false;
         const exitCode = typeof payloadObj.exitCode === "number" ? payloadObj.exitCode : null;
         return {

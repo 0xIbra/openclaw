@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { formatDurationCompact } from "../infra/format-time/format-duration.ts";
 import { killProcessTree } from "../process/kill-tree.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
+import { scrubText } from "../secrets/scrub-middleware.js";
 import {
   type ProcessSession,
   deleteSession,
@@ -28,6 +29,7 @@ type WritableStdin = {
   destroyed?: boolean;
 };
 const DEFAULT_LOG_TAIL_LINES = 200;
+const scrubTerminalText = (value: string) => scrubText(value, { context: "terminal" });
 
 function resolveLogSliceWindow(offset?: number, limit?: number) {
   const usingDefaultTail = offset === undefined && limit === undefined;
@@ -170,7 +172,7 @@ export function createProcessTool(
             cwd: s.cwd,
             command: s.command,
             name: deriveSessionName(s.command),
-            tail: s.tail,
+            tail: scrubTerminalText(s.tail),
             truncated: s.truncated,
           }));
         const finished = listFinishedSessions()
@@ -184,7 +186,7 @@ export function createProcessTool(
             cwd: s.cwd,
             command: s.command,
             name: deriveSessionName(s.command),
-            tail: s.tail,
+            tail: scrubTerminalText(s.tail),
             truncated: s.truncated,
             exitCode: s.exitCode ?? undefined,
             exitSignal: s.exitSignal ?? undefined,
@@ -267,7 +269,7 @@ export function createProcessTool(
                   {
                     type: "text",
                     text:
-                      (scopedFinished.tail ||
+                      (scrubTerminalText(scopedFinished.tail) ||
                         `(no output recorded${
                           scopedFinished.truncated ? " — truncated to cap" : ""
                         })`) +
@@ -282,7 +284,7 @@ export function createProcessTool(
                   status: scopedFinished.status === "completed" ? "completed" : "failed",
                   sessionId: params.sessionId,
                   exitCode: scopedFinished.exitCode ?? undefined,
-                  aggregated: scopedFinished.aggregated,
+                  aggregated: scrubTerminalText(scopedFinished.aggregated),
                   name: deriveSessionName(scopedFinished.command),
                 },
               };
@@ -319,7 +321,9 @@ export function createProcessTool(
               ? "completed"
               : "failed"
             : "running";
-          const output = [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n").trim();
+          const output = scrubTerminalText(
+            [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n").trim(),
+          );
           return {
             content: [
               {
@@ -337,7 +341,7 @@ export function createProcessTool(
               status,
               sessionId: params.sessionId,
               exitCode: exited ? exitCode : undefined,
-              aggregated: scopedSession.aggregated,
+              aggregated: scrubTerminalText(scopedSession.aggregated),
               name: deriveSessionName(scopedSession.command),
             },
           };
@@ -364,7 +368,12 @@ export function createProcessTool(
             );
             const logDefaultTailNote = defaultTailNote(totalLines, window.usingDefaultTail);
             return {
-              content: [{ type: "text", text: (slice || "(no output yet)") + logDefaultTailNote }],
+              content: [
+                {
+                  type: "text",
+                  text: scrubTerminalText(slice || "(no output yet)") + logDefaultTailNote,
+                },
+              ],
               details: {
                 status: scopedSession.exited ? "completed" : "running",
                 sessionId: params.sessionId,
@@ -387,7 +396,10 @@ export function createProcessTool(
             const logDefaultTailNote = defaultTailNote(totalLines, window.usingDefaultTail);
             return {
               content: [
-                { type: "text", text: (slice || "(no output recorded)") + logDefaultTailNote },
+                {
+                  type: "text",
+                  text: scrubTerminalText(slice || "(no output recorded)") + logDefaultTailNote,
+                },
               ],
               details: {
                 status,

@@ -221,6 +221,15 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "secrets",
+    description: "Manage the secret vault, scrubber, and audit log",
+    hasSubcommands: true,
+    register: async (program) => {
+      const mod = await import("../secrets-cli.js");
+      mod.registerSecretsCli(program);
+    },
+  },
+  {
     name: "skills",
     description: "List and inspect available skills",
     hasSubcommands: true,

@@ -6,6 +6,7 @@ import type { AnyAgentTool } from "./common.js";
 import { resolveMemoryBackendConfig } from "../../memory/backend-config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
+import { scrubText } from "../../secrets/scrub-middleware.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -81,8 +82,12 @@ export function createMemorySearchTool(options: {
           status.backend === "qmd"
             ? clampResultsByInjectedChars(decorated, resolved.qmd?.limits.maxInjectedChars)
             : decorated;
+        const scrubbedResults = results.map((entry) => ({
+          ...entry,
+          snippet: scrubText(entry.snippet ?? "", { context: "memory" }),
+        }));
         return jsonResult({
-          results,
+          results: scrubbedResults,
           provider: status.provider,
           model: status.model,
           fallback: status.fallback,
@@ -128,7 +133,10 @@ export function createMemoryGetTool(options: {
           from: from ?? undefined,
           lines: lines ?? undefined,
         });
-        return jsonResult(result);
+        return jsonResult({
+          ...result,
+          text: scrubText(result.text ?? "", { context: "memory" }),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return jsonResult({ path: relPath, text: "", disabled: true, error: message });

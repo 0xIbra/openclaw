@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import type { SessionFileEntry } from "./session-files.js";
 import type { MemorySource } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { scrubText } from "../secrets/scrub-middleware.js";
 import { runGeminiEmbeddingBatches, type GeminiBatchRequest } from "./batch-gemini.js";
 import {
   OPENAI_BATCH_ENDPOINT,
@@ -681,7 +682,8 @@ class MemoryManagerEmbeddingOps {
     entry: MemoryFileEntry | SessionFileEntry,
     options: { source: MemorySource; content?: string },
   ) {
-    const content = options.content ?? (await fs.readFile(entry.absPath, "utf-8"));
+    const rawContent = options.content ?? (await fs.readFile(entry.absPath, "utf-8"));
+    const content = scrubText(rawContent, { context: "memory" });
     const chunks = enforceEmbeddingMaxInputTokens(
       this.provider,
       chunkMarkdown(content, this.settings.chunking).filter(

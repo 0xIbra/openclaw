@@ -24,6 +24,7 @@ import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
 import { DEFAULT_UPLOAD_DIR, resolvePathsWithinRoot } from "../../browser/paths.js";
 import { applyBrowserProxyPaths, persistBrowserProxyFiles } from "../../browser/proxy-files.js";
 import { loadConfig } from "../../config/config.js";
+import { scrubText } from "../../secrets/scrub-middleware.js";
 import { wrapExternalContent } from "../../security/external-content.js";
 import { BrowserToolSchema } from "./browser-tool.schema.js";
 import { type AnyAgentTool, imageResultFromFile, jsonResult, readStringParam } from "./common.js";
@@ -35,7 +36,7 @@ function wrapBrowserExternalJson(params: {
   payload: unknown;
   includeWarning?: boolean;
 }): { wrappedText: string; safeDetails: Record<string, unknown> } {
-  const extractedText = JSON.stringify(params.payload, null, 2);
+  const extractedText = scrubText(JSON.stringify(params.payload, null, 2), { context: "browser" });
   const wrappedText = wrapExternalContent(extractedText, {
     source: "browser",
     includeWarning: params.includeWarning ?? true,
@@ -515,7 +516,7 @@ export function createBrowserTool(opts?: {
                 profile,
               });
           if (snapshot.format === "ai") {
-            const extractedText = snapshot.snapshot ?? "";
+            const extractedText = scrubText(snapshot.snapshot ?? "", { context: "browser" });
             const wrappedSnapshot = wrapExternalContent(extractedText, {
               source: "browser",
               includeWarning: true,
@@ -524,7 +525,10 @@ export function createBrowserTool(opts?: {
               ok: true,
               format: snapshot.format,
               targetId: snapshot.targetId,
-              url: snapshot.url,
+              url:
+                typeof snapshot.url === "string"
+                  ? scrubText(snapshot.url, { context: "browser" })
+                  : snapshot.url,
               truncated: snapshot.truncated,
               stats: snapshot.stats,
               refs: snapshot.refs ? Object.keys(snapshot.refs).length : undefined,
@@ -565,7 +569,10 @@ export function createBrowserTool(opts?: {
                 ...wrapped.safeDetails,
                 format: "aria",
                 targetId: snapshot.targetId,
-                url: snapshot.url,
+                url:
+                  typeof snapshot.url === "string"
+                    ? scrubText(snapshot.url, { context: "browser" })
+                    : snapshot.url,
                 nodeCount: snapshot.nodes.length,
                 externalContent: {
                   untrusted: true,
