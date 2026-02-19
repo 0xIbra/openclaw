@@ -7,6 +7,7 @@ import type {
   TaskWorkerStatus,
 } from "./types.js";
 import { writeLayeredMemoryEntry } from "../../memory/layered-writeback.js";
+import { resolveUserPath } from "../../utils.js";
 import {
   TASK_WORKER_HEARTBEAT_MS,
   TASK_WORKER_IDLE_POLL_MS,
@@ -248,6 +249,16 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
       }, heartbeatIntervalMs);
       heartbeatTimer.unref?.();
 
+      let executionWorkspaceDir: string | undefined = undefined;
+      try {
+        const project = options.taskService.getProject(started.task.projectId);
+        if (project?.repoRoot && project.repoRoot.trim() !== "") {
+          executionWorkspaceDir = resolveUserPath(project.repoRoot.trim());
+        }
+      } catch {
+        // use default
+      }
+
       let execution: TaskExecutionResult;
       try {
         execution = await options.executor.execute({
@@ -256,6 +267,7 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           claim: started.claim,
           attempt: started.attempt,
           signal,
+          workspaceDir: executionWorkspaceDir,
         });
       } catch (error) {
         execution = {

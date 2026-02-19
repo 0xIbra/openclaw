@@ -74,7 +74,11 @@ export function createEmbeddedTaskExecutor(options: EmbeddedTaskExecutorOptions)
       const sessionId = `task-runtime-${randomUUID()}`;
       const sessionFile = resolveSessionTranscriptPath(sessionId, options.agentId);
       await fs.mkdir(path.dirname(sessionFile), { recursive: true });
-      const workspaceDir = resolveAgentWorkspaceDir(config, options.agentId);
+      const defaultWorkspaceDir = resolveAgentWorkspaceDir(config, options.agentId);
+      const workspaceDir =
+        input.workspaceDir && input.workspaceDir.trim().length > 0
+          ? input.workspaceDir.trim()
+          : defaultWorkspaceDir;
       const sessionKey = appendTaskRuntimeMemoryContext({
         sessionKey: buildAgentMainSessionKey({
           agentId: options.agentId,

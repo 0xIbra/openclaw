@@ -23,6 +23,7 @@ export type TaskExecutionInput = {
   claim: TaskClaimRecord;
   attempt: TaskAttemptRecord;
   signal: AbortSignal;
+  workspaceDir?: string;
 };
 
 export type TaskExecutionSuccess = {

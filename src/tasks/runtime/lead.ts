@@ -2,6 +2,7 @@ import type { TaskAttemptRecord, TaskRecord } from "../types.js";
 import type { TaskLead, TaskLeadEvent, TaskLeadOptions, TaskLeadStatus } from "./types.js";
 import { markSubagentRunTerminated, registerSubagentRun } from "../../agents/subagent-registry.js";
 import { resolveAgentMainSessionKey } from "../../config/sessions.js";
+import { searchLayeredMemory, resolveLayeredScopes } from "../../memory/layered-manager.js";
 import { writeLayeredMemoryEntry } from "../../memory/layered-writeback.js";
 import { createTaskDecomposer } from "./decomposer.js";
 import {
@@ -521,7 +522,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
     }
   };
 
-  const delegateReadyTasks = () => {
+  const delegateReadyTasks = async () => {
     const team = options.taskService.getTeam(options.teamId);
     if (!team || team.archivedAtMs != null) {
       return;
@@ -572,6 +573,36 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
         agentId: selected,
       });
 
+      let memoryContext = "";
+      if (options.config) {
+        try {
+          const scopes = resolveLayeredScopes({
+            cfg: options.config,
+            agentId: selected,
+            projectId: task.projectId,
+            teamId: options.teamId,
+          });
+          const query = `${task.title} ${task.description ?? ""}`.trim();
+          if (query && scopes.length > 0) {
+            const results = await searchLayeredMemory({
+              cfg: options.config,
+              agentId: selected,
+              query,
+              scopes,
+              maxResults: 5,
+            });
+            if (results.length > 0) {
+              const formattedResults = results
+                .map((r, i) => `[Result ${i + 1}] (${r.scopeKind}:${r.scopeId})\n${r.snippet}`)
+                .join("\n\n");
+              memoryContext = `\n\n<TeamMemory>\nPrevious related context and lessons:\n${formattedResults}\n</TeamMemory>`;
+            }
+          }
+        } catch {
+          // best-effort
+        }
+      }
+
       options.taskService.publishBusMessage({
         senderAgentId: options.leadAgentId,
         receiverAgentId: selected,
@@ -579,7 +610,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
         correlationId: runId,
         messageType: "task:assign",
         subject: task.title,
-        body: `Assigned task ${task.title} (${task.id})`,
+        body: `Assigned task ${task.title} (${task.id})${memoryContext}`,
         payload: {
           runId,
           taskId: task.id,
@@ -635,7 +666,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
         processDueThreads();
         await decomposeReadyParents(signal);
         reviewParentProgress();
-        delegateReadyTasks();
+        await delegateReadyTasks();
         refreshWaitingCount();
       } catch (error) {
         if (signal.aborted) {

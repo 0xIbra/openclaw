@@ -510,6 +510,12 @@ export function buildAgentSystemPrompt(params: {
     workspaceGuidance,
     ...workspaceNotes,
     "",
+    "## Per-Project Context",
+    "- Each project uses a codebase-root `BOOTSTRAP.md` file to firmly define its tech stack, mental map, and hard constraints.",
+    "- If you are the Lead Agent analyzing a new project and this file is missing, you MUST create and define it with the initial architectural breakdown.",
+    "- If you are a Worker Agent and you discover or establish a critical new architectural rule during your tasks, you MUST edit and enrich the `BOOTSTRAP.md` file.",
+    "- Use Layered Memory for deep historical context or massive specs, but keep `BOOTSTRAP.md` updated as your immediate, strictly enforced baseline for all agents.",
+    "",
     ...docsSection,
     params.sandboxInfo?.enabled ? "## Sandbox" : "",
     params.sandboxInfo?.enabled
