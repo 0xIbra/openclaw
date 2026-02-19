@@ -404,6 +404,66 @@ export async function startGatewayServer(
   });
   let { cron, storePath: cronStorePath } = cronState;
   const taskService = createTaskService();
+  const emitLeadDerivedEvents = (event: import("../tasks/runtime/types.js").TaskLeadEvent) => {
+    const payload = event.payload;
+    if (!payload) {
+      return;
+    }
+    const payloadRecord = payload;
+    const taskId = typeof payloadRecord.taskId === "string" ? payloadRecord.taskId.trim() : "";
+    if (!taskId) {
+      return;
+    }
+
+    const task = taskService.getTask(taskId);
+    if (!task) {
+      return;
+    }
+
+    if (payloadRecord.decomposition === true) {
+      const decompositionRun = taskService.getLatestDecompositionRun(taskId);
+      if (decompositionRun) {
+        const children = taskService.listChildTasks(taskId);
+        broadcast(
+          "tasks.decomposition.changed",
+          {
+            reason: "updated",
+            parentTask: task,
+            children,
+            decompositionRun,
+            deduped: false,
+          },
+          { dropIfSlow: true },
+        );
+      }
+    }
+
+    if (payloadRecord.review === true) {
+      const review = taskService.getLatestTaskReview(taskId);
+      if (review) {
+        broadcast(
+          "tasks.review.changed",
+          {
+            reason: review.status,
+            task,
+            review,
+          },
+          { dropIfSlow: true },
+        );
+        if (review.status === "pending_human") {
+          broadcast(
+            "tasks.review.pending",
+            {
+              reason: "pending_human",
+              task,
+              review,
+            },
+            { dropIfSlow: true },
+          );
+        }
+      }
+    }
+  };
   const taskRuntimeEnabled =
     !minimalTestGateway &&
     process.env.VITEST !== "1" &&
@@ -426,6 +486,7 @@ export async function startGatewayServer(
         config: cfgAtStart,
         onLeadEvent: (event) => {
           broadcast("tasks.lead.changed", event, { dropIfSlow: true });
+          emitLeadDerivedEvents(event);
         },
         onEscalation: (event) => {
           broadcast("tasks.escalated", event, { dropIfSlow: true });

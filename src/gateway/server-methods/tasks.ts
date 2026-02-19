@@ -1,9 +1,12 @@
 import type { GatewayRequestHandlers } from "./types.js";
+import { loadConfig } from "../../config/config.js";
+import { createTaskDecomposer } from "../../tasks/runtime/decomposer.js";
 import { TaskServiceError } from "../../tasks/service.js";
 import {
   ErrorCodes,
   errorShape,
   validateTasksAttemptsListParams,
+  validateTasksDecomposeParams,
   validateTasksAttemptFailParams,
   validateTasksAttemptFinishParams,
   validateTasksAttemptStartParams,
@@ -15,6 +18,8 @@ import {
   validateTasksListParams,
   validateTasksRuntimeAgentControlParams,
   validateTasksRuntimeStatusParams,
+  validateTasksReviewDecideParams,
+  validateTasksReviewListPendingParams,
   validateTasksRequeueParams,
   validateTasksTransitionParams,
   validateTasksUpdateParams,
@@ -204,6 +209,152 @@ export const tasksHandlers: GatewayRequestHandlers = {
       const p = params as { taskId: string; limit?: number };
       const attempts = context.taskService.listTaskAttempts(p.taskId, p.limit ?? 50);
       respond(true, { attempts }, undefined);
+    } catch (err) {
+      respond(false, undefined, toGatewayTaskError(err));
+    }
+  },
+  "tasks.decompose": ({ params, respond, context }) => {
+    if (!assertValidParams(params, validateTasksDecomposeParams, "tasks.decompose", respond)) {
+      return;
+    }
+    const run = async () => {
+      const input = params as {
+        taskId: string;
+        force?: boolean;
+        requestedBy?: string;
+        plan?: {
+          summary?: string | null;
+          children: Array<{
+            localId: string;
+            title: string;
+            description: string;
+            type: "feature" | "bugfix" | "refactor" | "test" | "review" | "research" | "devops";
+            priority: "critical" | "high" | "medium" | "low";
+            dependsOnLocalIds: string[];
+            tags?: string[];
+            relevantPaths?: string[];
+          }>;
+        };
+      };
+      const parentTask = context.taskService.getTask(input.taskId);
+      if (!parentTask) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, `task not found: ${input.taskId}`),
+        );
+        return;
+      }
+      const teamId = parentTask.teamId;
+      if (!teamId) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, `task has no team assignment: ${input.taskId}`),
+        );
+        return;
+      }
+      const team = context.taskService.getTeam(teamId);
+      const leadAgentId = team?.leadAgentId?.trim();
+      if (!team || !leadAgentId) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            `team lead not configured for task team: ${teamId}`,
+          ),
+        );
+        return;
+      }
+      let plan = input.plan;
+      let plannerBackend: string | null = null;
+      let plannerSessionId: string | null = null;
+      if (!plan) {
+        const decomposer = createTaskDecomposer({ config: loadConfig() });
+        const generated = await decomposer.decompose({
+          leadAgentId,
+          teamId,
+          task: parentTask,
+        });
+        plan = generated.plan;
+        plannerBackend = generated.plannerBackend ?? null;
+        plannerSessionId = generated.plannerSessionId ?? null;
+      } else {
+        plannerBackend = "manual";
+      }
+      const result = context.taskService.decomposeTask({
+        parentTaskId: parentTask.id,
+        teamId,
+        leadAgentId,
+        requestedBy: input.requestedBy,
+        force: input.force === true,
+        plannerBackend,
+        plannerSessionId,
+        dedupeKey: `rpc:${parentTask.id}`,
+        plan,
+      });
+      context.broadcast("tasks.changed", { reason: "updated", task: result.parentTask });
+      for (const child of result.children) {
+        context.broadcast("tasks.changed", { reason: "created", task: child });
+      }
+      context.broadcast("tasks.decomposition.changed", {
+        reason: result.deduped ? "updated" : "created",
+        parentTask: result.parentTask,
+        children: result.children,
+        decompositionRun: result.decompositionRun,
+        deduped: result.deduped,
+      });
+      respond(true, result, undefined);
+    };
+    void run().catch((err) => {
+      respond(false, undefined, toGatewayTaskError(err));
+    });
+  },
+  "tasks.review.listPending": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateTasksReviewListPendingParams,
+        "tasks.review.listPending",
+        respond,
+      )
+    ) {
+      return;
+    }
+    try {
+      const input = params as { teamId?: string; projectId?: string; limit?: number };
+      const items = context.taskService.listPendingTaskReviews({
+        teamId: input.teamId,
+        projectId: input.projectId,
+        limit: input.limit,
+      });
+      respond(true, { items }, undefined);
+    } catch (err) {
+      respond(false, undefined, toGatewayTaskError(err));
+    }
+  },
+  "tasks.review.decide": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateTasksReviewDecideParams, "tasks.review.decide", respond)
+    ) {
+      return;
+    }
+    try {
+      const input = params as {
+        taskId: string;
+        decision: "approve" | "reject";
+        actor: string;
+        reason?: string;
+      };
+      const result = context.taskService.decideTaskReview(input);
+      context.broadcast("tasks.changed", { reason: "transitioned", task: result.task });
+      context.broadcast("tasks.review.changed", {
+        reason: result.review.status,
+        task: result.task,
+        review: result.review,
+      });
+      respond(true, result, undefined);
     } catch (err) {
       respond(false, undefined, toGatewayTaskError(err));
     }

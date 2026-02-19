@@ -28,9 +28,11 @@ import type {
   SkillStatusReport,
   StatusSummary,
   TaskAttemptDto,
+  TaskDecompositionRunDto,
   TaskDto,
   TaskEscalationDto,
   TaskPriority,
+  TaskReviewDto,
   TaskRuntimeStatusDto,
   TaskType,
 } from "./types.ts";
@@ -319,6 +321,8 @@ export class OpenClawApp extends LitElement {
   @state() boardModalError: string | null = null;
   @state() boardSelectedTaskId: string | null = null;
   @state() boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]> = {};
+  @state() boardTaskReviewsByTaskId: Record<string, TaskReviewDto> = {};
+  @state() boardDecompositionRunsByParentTaskId: Record<string, TaskDecompositionRunDto> = {};
   @state() boardTaskAttemptsLoadingTaskId: string | null = null;
   @state() boardRuntimeStatus: TaskRuntimeStatusDto | null = null;
   @state() boardRuntimeLoading = false;
@@ -335,7 +339,13 @@ export class OpenClawApp extends LitElement {
       | { type: "resumeWorker"; agentId: string }
       | { type: "restartWorker"; agentId: string }
       | { type: "requeueTask"; taskId: string; assignedAgentId: string | null }
-      | { type: "forceFailTask"; taskId: string };
+      | { type: "forceFailTask"; taskId: string }
+      | {
+          type: "reviewDecide";
+          taskId: string;
+          decision: "approve" | "reject";
+          reason: string;
+        };
   } | null = null;
 
   @state() skillsLoading = false;

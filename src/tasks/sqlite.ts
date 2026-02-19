@@ -7,7 +7,7 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 
 export type TaskDatabase = DatabaseSync;
 
-export const TASK_SCHEMA_VERSION = 4;
+export const TASK_SCHEMA_VERSION = 5;
 
 function tableExists(db: TaskDatabase, tableName: string): boolean {
   const row = db
@@ -552,6 +552,67 @@ function migrateTaskSchemaV3ToV4(db: TaskDatabase): void {
   }
 }
 
+function migrateTaskSchemaV4ToV5(db: TaskDatabase): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS task_decomposition_runs (
+        id TEXT PRIMARY KEY,
+        parent_task_id TEXT NOT NULL,
+        team_id TEXT,
+        lead_agent_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('planned', 'applied', 'failed', 'superseded')),
+        planner_backend TEXT,
+        planner_session_id TEXT,
+        plan_json TEXT NOT NULL DEFAULT '{}',
+        child_task_ids_json TEXT NOT NULL DEFAULT '[]',
+        error_text TEXT,
+        dedupe_key TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_decomposition_runs_parent_created
+        ON task_decomposition_runs(parent_task_id, created_at_ms DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_task_decomposition_runs_dedupe
+        ON task_decomposition_runs(parent_task_id, dedupe_key, status);
+
+      CREATE TABLE IF NOT EXISTS task_review_records (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        team_id TEXT,
+        lead_agent_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending_lead', 'pending_human', 'approved', 'rejected', 'blocked')),
+        require_human_approval INTEGER NOT NULL DEFAULT 0,
+        auto_approve_on_clean INTEGER NOT NULL DEFAULT 1,
+        decision_actor TEXT,
+        decision_reason TEXT,
+        verdict_json TEXT NOT NULL DEFAULT '{}',
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        resolved_at_ms INTEGER,
+        FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+        FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_review_records_status_updated
+        ON task_review_records(status, updated_at_ms DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_task_review_records_task_created
+        ON task_review_records(task_id, created_at_ms DESC);
+    `);
+
+    setTaskSchemaVersion(db, 5);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function initializeTaskSchema(db: TaskDatabase): void {
   db.exec("PRAGMA foreign_keys = ON;");
   initializeBaseSchema(db);
@@ -570,6 +631,9 @@ export function initializeTaskSchema(db: TaskDatabase): void {
   }
   if (getTaskSchemaVersion(db) < 4) {
     migrateTaskSchemaV3ToV4(db);
+  }
+  if (getTaskSchemaVersion(db) < 5) {
+    migrateTaskSchemaV4ToV5(db);
   }
 
   if (getTaskSchemaVersion(db) < TASK_SCHEMA_VERSION) {

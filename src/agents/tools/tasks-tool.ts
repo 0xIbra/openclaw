@@ -3,7 +3,16 @@ import { optionalStringEnum, stringEnum } from "../schema/typebox.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 import { callGatewayTool, type GatewayCallOptions } from "./gateway.js";
 
-const TASKS_ACTIONS = ["list", "create", "get", "update", "transition"] as const;
+const TASKS_ACTIONS = [
+  "list",
+  "create",
+  "get",
+  "update",
+  "transition",
+  "decompose",
+  "reviewListPending",
+  "reviewDecide",
+] as const;
 const TASK_TYPES = [
   "feature",
   "bugfix",
@@ -25,6 +34,7 @@ const TASK_STATUSES = [
   "failed",
   "done",
 ] as const;
+const REVIEW_DECISIONS = ["approve", "reject"] as const;
 
 const TasksToolSchema = Type.Object({
   action: stringEnum(TASKS_ACTIONS),
@@ -40,8 +50,31 @@ const TasksToolSchema = Type.Object({
   complexity: optionalStringEnum(TASK_COMPLEXITIES),
   status: optionalStringEnum(TASK_STATUSES),
   toStatus: optionalStringEnum(TASK_STATUSES),
+  decision: optionalStringEnum(REVIEW_DECISIONS),
+  actor: Type.Optional(Type.String()),
+  reason: Type.Optional(Type.String()),
   parentTaskId: Type.Optional(Type.String()),
   dependsOnTaskIds: Type.Optional(Type.Array(Type.String())),
+  force: Type.Optional(Type.Boolean()),
+  requestedBy: Type.Optional(Type.String()),
+  planSummary: Type.Optional(Type.String()),
+  planChildren: Type.Optional(
+    Type.Array(
+      Type.Object(
+        {
+          localId: Type.String(),
+          title: Type.String(),
+          description: Type.String(),
+          type: optionalStringEnum(TASK_TYPES),
+          priority: optionalStringEnum(TASK_PRIORITIES),
+          dependsOnLocalIds: Type.Optional(Type.Array(Type.String())),
+          tags: Type.Optional(Type.Array(Type.String())),
+          relevantPaths: Type.Optional(Type.Array(Type.String())),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  ),
   assignedAgentId: Type.Optional(Type.String()),
   maxAttempts: Type.Optional(Type.Number()),
   relevantPaths: Type.Optional(Type.Array(Type.String())),
@@ -175,6 +208,90 @@ export function createTasksTool(): AnyAgentTool {
             id,
             toStatus,
             assignedAgentId: readStringParam(params, "assignedAgentId") || undefined,
+          }),
+        );
+      }
+
+      if (action === "decompose") {
+        const id = readStringParam(params, "id", { required: true });
+        const rawChildren = Array.isArray(params.planChildren) ? params.planChildren : [];
+        const children = rawChildren
+          .map((entry, index) => {
+            if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+              return null;
+            }
+            const value = entry as Record<string, unknown>;
+            const localId =
+              (typeof value.localId === "string" ? value.localId.trim() : "") || `s${index + 1}`;
+            const title = typeof value.title === "string" ? value.title.trim() : "";
+            const description =
+              typeof value.description === "string" ? value.description.trim() : "";
+            const type = typeof value.type === "string" ? value.type.trim() : "feature";
+            const priority = typeof value.priority === "string" ? value.priority.trim() : "medium";
+            const dependsOnLocalIds = Array.isArray(value.dependsOnLocalIds)
+              ? value.dependsOnLocalIds
+                  .map((dep) => (typeof dep === "string" ? dep.trim() : ""))
+                  .filter(Boolean)
+              : [];
+            const tags = Array.isArray(value.tags)
+              ? value.tags.map((tag) => (typeof tag === "string" ? tag.trim() : "")).filter(Boolean)
+              : [];
+            const relevantPaths = Array.isArray(value.relevantPaths)
+              ? value.relevantPaths
+                  .map((pathValue) => (typeof pathValue === "string" ? pathValue.trim() : ""))
+                  .filter(Boolean)
+              : [];
+            if (!title || !description) {
+              return null;
+            }
+            return {
+              localId,
+              title,
+              description,
+              type,
+              priority,
+              dependsOnLocalIds,
+              tags: tags.length > 0 ? tags : undefined,
+              relevantPaths: relevantPaths.length > 0 ? relevantPaths : undefined,
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry != null);
+        const hasPlan = children.length > 0;
+        return jsonResult(
+          await callGatewayTool("tasks.decompose", gatewayOpts, {
+            taskId: id,
+            force: params.force === true ? true : undefined,
+            requestedBy: readStringParam(params, "requestedBy") || undefined,
+            plan: hasPlan
+              ? {
+                  summary: readStringParam(params, "planSummary", { trim: false }) || undefined,
+                  children,
+                }
+              : undefined,
+          }),
+        );
+      }
+
+      if (action === "reviewListPending") {
+        return jsonResult(
+          await callGatewayTool("tasks.review.listPending", gatewayOpts, {
+            teamId: readStringParam(params, "teamId") || undefined,
+            projectId: readStringParam(params, "projectId") || undefined,
+            limit: typeof params.limit === "number" ? Math.floor(params.limit) : undefined,
+          }),
+        );
+      }
+
+      if (action === "reviewDecide") {
+        const id = readStringParam(params, "id", { required: true });
+        const decision = readStringParam(params, "decision", { required: true });
+        const actor = readStringParam(params, "actor", { required: true });
+        return jsonResult(
+          await callGatewayTool("tasks.review.decide", gatewayOpts, {
+            taskId: id,
+            decision,
+            actor,
+            reason: readStringParam(params, "reason", { trim: false }) || undefined,
           }),
         );
       }

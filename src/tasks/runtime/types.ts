@@ -1,6 +1,13 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import type { TaskService } from "../service.js";
-import type { TaskAttemptRecord, TaskClaimRecord, TaskRecord } from "../types.js";
+import type {
+  TaskAttemptRecord,
+  TaskClaimRecord,
+  TaskDecompositionPlan,
+  TaskPendingReviewRecord,
+  TaskRecord,
+  TaskReviewRecord,
+} from "../types.js";
 
 export type TaskWorkerState =
   | "idle"
@@ -51,6 +58,23 @@ export type TaskExecutionResult = TaskExecutionSuccess | TaskExecutionFailure;
 
 export interface TaskExecutor {
   execute(input: TaskExecutionInput): Promise<TaskExecutionResult>;
+}
+
+export type TaskDecomposerInput = {
+  leadAgentId: string;
+  teamId: string;
+  task: TaskRecord;
+  signal?: AbortSignal;
+};
+
+export type TaskDecomposerResult = {
+  plan: TaskDecompositionPlan;
+  plannerBackend?: string | null;
+  plannerSessionId?: string | null;
+};
+
+export interface TaskDecomposer {
+  decompose(input: TaskDecomposerInput): Promise<TaskDecomposerResult>;
 }
 
 export type TaskWorkerStatus = {
@@ -140,6 +164,12 @@ export type TaskLeadStatus = {
 };
 
 export type TaskLeadEventReason = "started" | "status" | "stopped" | "delegated" | "escalated";
+export type TaskReviewDecisionReason =
+  | "pending_lead"
+  | "pending_human"
+  | "approved"
+  | "rejected"
+  | "blocked";
 
 export type TaskLeadEvent = {
   reason: TaskLeadEventReason;
@@ -153,6 +183,7 @@ export type TaskLeadOptions = {
   teamId: string;
   teamName: string;
   leadAgentId: string;
+  decomposer?: TaskDecomposer;
   pollMs?: number;
   busVisibilityTimeoutMs?: number;
   questionReminderMs?: number;
@@ -166,6 +197,12 @@ export type TaskLead = {
   start: () => void;
   stop: () => Promise<void>;
   getStatus: () => TaskLeadStatus;
+};
+
+export type TaskLeadReviewResult = {
+  parentTask: TaskRecord;
+  review: TaskReviewRecord;
+  pending: TaskPendingReviewRecord[];
 };
 
 export type TaskLeadSupervisorOptions = {

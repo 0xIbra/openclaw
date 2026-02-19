@@ -2,9 +2,11 @@ import { html, nothing } from "lit";
 import type {
   ProjectDto,
   TaskAttemptDto,
+  TaskDecompositionRunDto,
   TaskDto,
   TaskEscalationDto,
   TaskPriority,
+  TaskReviewDto,
   TaskRuntimeStatusDto,
   TaskType,
 } from "../types.ts";
@@ -54,6 +56,9 @@ export type BoardModalState =
       message: string;
       confirmLabel: string;
       tone: "primary" | "danger";
+      requireReason?: boolean;
+      reason?: string;
+      error?: string | null;
     };
 
 export type BoardProps = {
@@ -74,6 +79,8 @@ export type BoardProps = {
   modal: BoardModalState;
   selectedTaskId: string | null;
   selectedTaskAttempts: TaskAttemptDto[];
+  taskReviewsByTaskId: Record<string, TaskReviewDto>;
+  decompositionRunsByParentTaskId: Record<string, TaskDecompositionRunDto>;
   selectedTaskAttemptsLoading: boolean;
   runtimeStatus: TaskRuntimeStatusDto | null;
   runtimeLoading: boolean;
@@ -102,6 +109,10 @@ export type BoardProps = {
   onRequestRestartAgent: (agentId: string) => void;
   onRequestRequeueTask: (task: TaskDto) => void;
   onRequestForceFailTask: (task: TaskDto) => void;
+  onRequestDecomposeTask: (task: TaskDto) => void;
+  onRequestApproveParentTask: (task: TaskDto) => void;
+  onRequestRejectParentTask: (task: TaskDto) => void;
+  onConfirmReasonChange: (reason: string) => void;
 };
 
 function boardStatus(status: TaskDto["status"]): Exclude<TaskDto["status"], "created"> {
@@ -188,6 +199,14 @@ export function renderBoard(props: BoardProps) {
     .filter((task) => matchesFilters(task, props.filters));
   const selectedTask = scopedTasks.find((task) => task.id === props.selectedTaskId) ?? null;
   const currentAttempt = latestAttempt(props.selectedTaskAttempts);
+  const childTasks = selectedTask
+    ? scopedTasks.filter((task) => task.parentTaskId === selectedTask.id)
+    : [];
+  const selectedReview = selectedTask ? (props.taskReviewsByTaskId[selectedTask.id] ?? null) : null;
+  const decompositionRun = selectedTask
+    ? (props.decompositionRunsByParentTaskId[selectedTask.id] ?? null)
+    : null;
+  const childDoneCount = childTasks.filter((task) => task.status === "done").length;
   const assigneeOptions = Array.from(
     new Set(props.tasks.map((task) => task.assignedAgentId?.trim() || "").filter(Boolean)),
   ).toSorted();
@@ -567,7 +586,68 @@ export function renderBoard(props: BoardProps) {
                       }
                     </div>
                   </div>
+                  <div class="board-drawer__section">
+                    <div class="board-drawer__section-title">Decomposition & Review</div>
+                    <div class="board-drawer__kv">
+                      Children: ${childTasks.length > 0 ? `${childDoneCount}/${childTasks.length} done` : "None"}
+                    </div>
+                    <div class="board-drawer__kv">
+                      Decomposition run: ${decompositionRun ? decompositionRun.status : "Not decomposed"}
+                    </div>
+                    <div class="board-drawer__kv">
+                      Review state: ${selectedReview ? selectedReview.status : "No review record"}
+                    </div>
+                    <div class="board-drawer__kv">
+                      Human gate: ${
+                        selectedReview
+                          ? selectedReview.requireHumanApproval
+                            ? "required"
+                            : "disabled"
+                          : "default"
+                      }
+                    </div>
+                    <div class="board-drawer__kv">
+                      Auto-approve: ${
+                        selectedReview
+                          ? selectedReview.autoApproveOnClean
+                            ? "enabled"
+                            : "disabled"
+                          : "default"
+                      }
+                    </div>
+                  </div>
                 </div>
+
+                ${
+                  selectedReview?.status === "pending_human"
+                    ? html`
+                        <div class="callout info">Parent task is waiting for human approval.</div>
+                      `
+                    : nothing
+                }
+
+                ${
+                  childTasks.length > 0
+                    ? html`
+                        <div class="board-drawer__section">
+                          <div class="board-drawer__section-title">Child Tasks</div>
+                          <div class="board-attempts">
+                            ${childTasks.map(
+                              (child) => html`
+                                <div class="board-attempt">
+                                  <div>
+                                    <div class="board-attempt__title">${child.title}</div>
+                                    <div class="board-runtime-row__meta">${child.id}</div>
+                                  </div>
+                                  <div class="chip ${stateClass(child.status)}">${child.status}</div>
+                                </div>
+                              `,
+                            )}
+                          </div>
+                        </div>
+                      `
+                    : nothing
+                }
 
                 <div class="board-drawer__section">
                   <div class="board-drawer__section-title">Latest Error</div>
@@ -624,6 +704,39 @@ export function renderBoard(props: BoardProps) {
                 </div>
 
                 <div class="board-drawer__actions">
+                  ${
+                    !selectedTask.parentTaskId
+                      ? html`
+                          <button
+                            class="btn"
+                            @click=${() => props.onRequestDecomposeTask(selectedTask)}
+                            ?disabled=${props.operatorPendingKey === `decompose:${selectedTask.id}`}
+                          >
+                            Decompose now
+                          </button>
+                        `
+                      : nothing
+                  }
+                  ${
+                    selectedReview &&
+                    (selectedReview.status === "pending_human" ||
+                      selectedReview.status === "pending_lead")
+                      ? html`
+                          <button
+                            class="btn primary"
+                            @click=${() => props.onRequestApproveParentTask(selectedTask)}
+                          >
+                            Approve parent
+                          </button>
+                          <button
+                            class="btn danger"
+                            @click=${() => props.onRequestRejectParentTask(selectedTask)}
+                          >
+                            Reject parent
+                          </button>
+                        `
+                      : nothing
+                  }
                   <button class="btn" @click=${() => props.onRequestRequeueTask(selectedTask)}>
                     Requeue
                   </button>
@@ -807,6 +920,23 @@ export function renderBoard(props: BoardProps) {
                 <div class="exec-approval-card board-modal__card">
                   <div class="exec-approval-title">${props.modal.title}</div>
                   <div class="exec-approval-sub">${props.modal.message}</div>
+                  ${
+                    props.modal.requireReason
+                      ? html`
+                          <label class="field full">
+                            <span>Reason</span>
+                            <textarea
+                              .value=${props.modal.reason ?? ""}
+                              @input=${(event: Event) =>
+                                props.onConfirmReasonChange(
+                                  (event.target as HTMLTextAreaElement).value,
+                                )}
+                            ></textarea>
+                          </label>
+                        `
+                      : nothing
+                  }
+                  ${props.modal.error ? html`<div class="callout danger">${props.modal.error}</div>` : nothing}
                   <div class="row board-modal__actions">
                     <button class="btn" @click=${props.onCloseModal}>Cancel</button>
                     <button

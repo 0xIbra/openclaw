@@ -74,6 +74,7 @@ const READ_METHODS = new Set([
   "projects.get",
   "tasks.list",
   "tasks.get",
+  "tasks.review.listPending",
   "teams.list",
   "teams.get",
   "teams.getByName",

@@ -34,7 +34,12 @@ import {
 import { loadNodes } from "./controllers/nodes.ts";
 import { patchProjectFromEvent } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
-import { patchTaskAttemptFromEvent, patchTaskFromEvent } from "./controllers/tasks.ts";
+import {
+  patchTaskAttemptFromEvent,
+  patchTaskDecompositionFromEvent,
+  patchTaskFromEvent,
+  patchTaskReviewFromEvent,
+} from "./controllers/tasks.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 
 type GatewayHost = {
@@ -67,6 +72,11 @@ type GatewayHost = {
   boardTasks: import("./types.ts").TaskDto[];
   boardSelectedProjectId: string | null;
   boardTaskAttemptsByTaskId: Record<string, import("./types.ts").TaskAttemptDto[]>;
+  boardTaskReviewsByTaskId: Record<string, import("./types.ts").TaskReviewDto>;
+  boardDecompositionRunsByParentTaskId: Record<
+    string,
+    import("./types.ts").TaskDecompositionRunDto
+  >;
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
   boardEscalations: TaskEscalationDto[];
 };
@@ -278,6 +288,16 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "tasks.attempt.changed") {
     patchTaskAttemptFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.decomposition.changed") {
+    patchTaskDecompositionFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.review.changed" || evt.event === "tasks.review.pending") {
+    patchTaskReviewFromEvent(host, evt.payload);
     return;
   }
 

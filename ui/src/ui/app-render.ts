@@ -54,8 +54,11 @@ import {
 } from "./controllers/skills.ts";
 import {
   createTask,
+  decideTaskReview,
+  decomposeTask,
   forceFailActiveTask,
   listTaskAttempts,
+  listPendingTaskReviews,
   loadRuntimeStatus,
   pauseRuntimeAgent,
   requeueTask,
@@ -150,6 +153,14 @@ export function renderApp(state: AppViewState) {
               message: state.boardConfirmAction.message,
               confirmLabel: state.boardConfirmAction.confirmLabel,
               tone: state.boardConfirmAction.tone,
+              requireReason:
+                state.boardConfirmAction.action.type === "reviewDecide" &&
+                state.boardConfirmAction.action.decision === "reject",
+              reason:
+                state.boardConfirmAction.action.type === "reviewDecide"
+                  ? state.boardConfirmAction.action.reason
+                  : "",
+              error: state.boardModalError,
             }
           : null;
 
@@ -350,6 +361,8 @@ export function renderApp(state: AppViewState) {
                 modal: boardModal,
                 selectedTaskId: state.boardSelectedTaskId,
                 selectedTaskAttempts: selectedBoardAttempts,
+                taskReviewsByTaskId: state.boardTaskReviewsByTaskId,
+                decompositionRunsByParentTaskId: state.boardDecompositionRunsByParentTaskId,
                 selectedTaskAttemptsLoading: selectedBoardAttemptsLoading,
                 runtimeStatus: state.boardRuntimeStatus,
                 runtimeLoading: state.boardRuntimeLoading,
@@ -366,11 +379,23 @@ export function renderApp(state: AppViewState) {
                 onSelectProject: (projectId) => {
                   state.boardSelectedProjectId = projectId || null;
                   state.boardSelectedTaskId = null;
-                  void loadTasks(state);
+                  void loadTasks(state).then(() =>
+                    listPendingTaskReviews(state, {
+                      projectId: state.boardSelectedProjectId ?? undefined,
+                      limit: 200,
+                    }).catch(() => undefined),
+                  );
                 },
                 onToggleArchivedProjects: (enabled) => {
                   state.boardShowArchivedProjects = enabled;
-                  void loadProjects(state).then(() => loadTasks(state));
+                  void loadProjects(state)
+                    .then(() => loadTasks(state))
+                    .then(() =>
+                      listPendingTaskReviews(state, {
+                        projectId: state.boardSelectedProjectId ?? undefined,
+                        limit: 200,
+                      }).catch(() => undefined),
+                    );
                 },
                 onFiltersChange: (patch) => {
                   state.boardFilterAssignee = patch.assignee ?? state.boardFilterAssignee;
@@ -383,6 +408,12 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => {
                   void loadProjects(state)
                     .then(() => loadTasks(state))
+                    .then(() =>
+                      listPendingTaskReviews(state, {
+                        projectId: state.boardSelectedProjectId ?? undefined,
+                        limit: 200,
+                      }),
+                    )
                     .then(async () => {
                       state.boardRuntimeLoading = true;
                       state.boardRuntimeError = null;
@@ -446,6 +477,10 @@ export function renderApp(state: AppViewState) {
                 },
                 onOpenTaskDrawer: (taskId) => {
                   state.boardSelectedTaskId = taskId;
+                  void listPendingTaskReviews(state, {
+                    projectId: state.boardSelectedProjectId ?? undefined,
+                    limit: 200,
+                  }).catch(() => undefined);
                   if (state.boardTaskAttemptsByTaskId[taskId]) {
                     return;
                   }
@@ -570,11 +605,22 @@ export function renderApp(state: AppViewState) {
                     return;
                   }
                   const action = state.boardConfirmAction.action;
+                  if (
+                    action.type === "reviewDecide" &&
+                    action.decision === "reject" &&
+                    !action.reason.trim()
+                  ) {
+                    state.boardModalError = "Reject reason is required.";
+                    return;
+                  }
                   const key =
-                    action.type === "requeueTask" || action.type === "forceFailTask"
+                    action.type === "requeueTask" ||
+                    action.type === "forceFailTask" ||
+                    action.type === "reviewDecide"
                       ? `${action.type}:${action.taskId}`
                       : `${action.type}:${action.agentId}`;
                   state.boardOperatorPendingKey = key;
+                  state.boardModalError = null;
                   const runAction = async () => {
                     if (action.type === "pauseWorker") {
                       await pauseRuntimeAgent(state, action.agentId);
@@ -593,11 +639,22 @@ export function renderApp(state: AppViewState) {
                         reason: "Operator forced failure from Control UI",
                         actor: "control-ui",
                       });
+                    } else if (action.type === "reviewDecide") {
+                      await decideTaskReview(state, {
+                        taskId: action.taskId,
+                        decision: action.decision,
+                        actor: "control-ui",
+                        reason: action.reason.trim() || undefined,
+                      });
                     }
                   };
                   void runAction()
                     .then(async () => {
-                      if (action.type === "requeueTask" || action.type === "forceFailTask") {
+                      if (
+                        action.type === "requeueTask" ||
+                        action.type === "forceFailTask" ||
+                        action.type === "reviewDecide"
+                      ) {
                         if (state.boardSelectedTaskId) {
                           state.boardTaskAttemptsLoadingTaskId = state.boardSelectedTaskId;
                           try {
@@ -609,6 +666,10 @@ export function renderApp(state: AppViewState) {
                             state.boardTaskAttemptsLoadingTaskId = null;
                           }
                         }
+                        await listPendingTaskReviews(state, {
+                          projectId: state.boardSelectedProjectId ?? undefined,
+                          limit: 200,
+                        }).catch(() => undefined);
                         await loadTasks(state);
                       }
                       await loadRuntimeStatus(state).catch(() => undefined);
@@ -621,6 +682,22 @@ export function renderApp(state: AppViewState) {
                       state.boardActiveModal = null;
                       state.boardConfirmAction = null;
                     });
+                },
+                onConfirmReasonChange: (reason) => {
+                  if (
+                    !state.boardConfirmAction ||
+                    state.boardConfirmAction.action.type !== "reviewDecide"
+                  ) {
+                    return;
+                  }
+                  state.boardConfirmAction = {
+                    ...state.boardConfirmAction,
+                    action: {
+                      ...state.boardConfirmAction.action,
+                      reason,
+                    },
+                  };
+                  state.boardModalError = null;
                 },
                 onRequestPauseAgent: (agentId) => {
                   state.boardActiveModal = "confirmAction";
@@ -676,6 +753,55 @@ export function renderApp(state: AppViewState) {
                     action: {
                       type: "forceFailTask",
                       taskId: task.id,
+                    },
+                  };
+                },
+                onRequestDecomposeTask: (task) => {
+                  state.boardOperatorPendingKey = `decompose:${task.id}`;
+                  state.boardModalError = null;
+                  void decomposeTask(state, {
+                    taskId: task.id,
+                    requestedBy: "control-ui",
+                  })
+                    .then(async () => {
+                      await loadTasks(state);
+                    })
+                    .catch((err) => {
+                      state.boardError = String(err);
+                    })
+                    .finally(() => {
+                      state.boardOperatorPendingKey = null;
+                    });
+                },
+                onRequestApproveParentTask: (task) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardModalError = null;
+                  state.boardConfirmAction = {
+                    title: "Approve Parent Task",
+                    message: `Approve parent task "${task.title}"?`,
+                    confirmLabel: "Approve",
+                    tone: "primary",
+                    action: {
+                      type: "reviewDecide",
+                      taskId: task.id,
+                      decision: "approve",
+                      reason: "Approved from Control UI",
+                    },
+                  };
+                },
+                onRequestRejectParentTask: (task) => {
+                  state.boardActiveModal = "confirmAction";
+                  state.boardModalError = null;
+                  state.boardConfirmAction = {
+                    title: "Reject Parent Task",
+                    message: `Reject parent task "${task.title}" and block it?`,
+                    confirmLabel: "Reject",
+                    tone: "danger",
+                    action: {
+                      type: "reviewDecide",
+                      taskId: task.id,
+                      decision: "reject",
+                      reason: "",
                     },
                   };
                 },

@@ -31,9 +31,11 @@ import type {
   SkillStatusReport,
   StatusSummary,
   TaskAttemptDto,
+  TaskDecompositionRunDto,
   TaskDto,
   TaskEscalationDto,
   TaskPriority,
+  TaskReviewDto,
   TaskRuntimeStatusDto,
   TaskType,
 } from "./types.ts";
@@ -215,6 +217,8 @@ export type AppViewState = {
   boardModalError: string | null;
   boardSelectedTaskId: string | null;
   boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]>;
+  boardTaskReviewsByTaskId: Record<string, TaskReviewDto>;
+  boardDecompositionRunsByParentTaskId: Record<string, TaskDecompositionRunDto>;
   boardTaskAttemptsLoadingTaskId: string | null;
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
   boardRuntimeLoading: boolean;
@@ -231,7 +235,13 @@ export type AppViewState = {
       | { type: "resumeWorker"; agentId: string }
       | { type: "restartWorker"; agentId: string }
       | { type: "requeueTask"; taskId: string; assignedAgentId: string | null }
-      | { type: "forceFailTask"; taskId: string };
+      | { type: "forceFailTask"; taskId: string }
+      | {
+          type: "reviewDecide";
+          taskId: string;
+          decision: "approve" | "reject";
+          reason: string;
+        };
   } | null;
   skillsLoading: boolean;
   skillsReport: SkillStatusReport | null;

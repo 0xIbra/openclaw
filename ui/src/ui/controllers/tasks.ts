@@ -1,6 +1,9 @@
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type {
   TaskAttemptDto,
+  TaskDecompositionRunDto,
+  TaskPendingReviewItemDto,
+  TaskReviewDto,
   TaskDto,
   TaskPriority,
   TaskRuntimeStatusDto,
@@ -22,6 +25,8 @@ export type TasksState = {
   boardFilterTag: string;
   boardFilterQuery: string;
   boardTaskAttemptsByTaskId: Record<string, TaskAttemptDto[]>;
+  boardTaskReviewsByTaskId: Record<string, TaskReviewDto>;
+  boardDecompositionRunsByParentTaskId: Record<string, TaskDecompositionRunDto>;
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
 };
 
@@ -136,6 +141,110 @@ export async function listTaskAttempts(
     [input.taskId]: attempts,
   };
   return attempts;
+}
+
+export async function decomposeTask(
+  state: Pick<
+    TasksState,
+    | "client"
+    | "connected"
+    | "boardTasks"
+    | "boardTaskReviewsByTaskId"
+    | "boardDecompositionRunsByParentTaskId"
+  >,
+  input: {
+    taskId: string;
+    force?: boolean;
+    requestedBy?: string;
+    plan?: {
+      summary?: string | null;
+      children: Array<{
+        localId: string;
+        title: string;
+        description: string;
+        type: TaskType;
+        priority: TaskPriority;
+        dependsOnLocalIds: string[];
+        tags?: string[];
+        relevantPaths?: string[];
+      }>;
+    };
+  },
+) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{
+    parentTask: TaskDto;
+    children: TaskDto[];
+    decompositionRun: TaskDecompositionRunDto;
+    deduped: boolean;
+  }>("tasks.decompose", {
+    taskId: input.taskId,
+    force: input.force,
+    requestedBy: input.requestedBy,
+    plan: input.plan,
+  });
+  patchTaskInList(state, response.parentTask);
+  for (const child of response.children) {
+    patchTaskInList(state, child);
+  }
+  state.boardDecompositionRunsByParentTaskId = {
+    ...state.boardDecompositionRunsByParentTaskId,
+    [response.parentTask.id]: response.decompositionRun,
+  };
+  return response;
+}
+
+export async function listPendingTaskReviews(
+  state: Pick<TasksState, "client" | "connected" | "boardTaskReviewsByTaskId">,
+  input?: { teamId?: string; projectId?: string; limit?: number },
+) {
+  if (!state.client || !state.connected) {
+    return [];
+  }
+  const response = await state.client.request<{ items?: TaskPendingReviewItemDto[] }>(
+    "tasks.review.listPending",
+    {
+      teamId: input?.teamId,
+      projectId: input?.projectId,
+      limit: input?.limit,
+    },
+  );
+  const items = Array.isArray(response.items) ? response.items : [];
+  const next = { ...state.boardTaskReviewsByTaskId };
+  for (const item of items) {
+    if (!item?.review?.taskId) {
+      continue;
+    }
+    next[item.review.taskId] = item.review;
+  }
+  state.boardTaskReviewsByTaskId = next;
+  return items;
+}
+
+export async function decideTaskReview(
+  state: Pick<TasksState, "client" | "connected" | "boardTasks" | "boardTaskReviewsByTaskId">,
+  input: {
+    taskId: string;
+    decision: "approve" | "reject";
+    actor: string;
+    reason?: string;
+  },
+) {
+  if (!state.client || !state.connected) {
+    return null;
+  }
+  const response = await state.client.request<{ task: TaskDto; review: TaskReviewDto }>(
+    "tasks.review.decide",
+    input,
+  );
+  patchTaskInList(state, response.task);
+  state.boardTaskReviewsByTaskId = {
+    ...state.boardTaskReviewsByTaskId,
+    [response.task.id]: response.review,
+  };
+  return response;
 }
 
 export async function loadRuntimeStatus(
@@ -308,6 +417,54 @@ export function patchTaskAttemptFromEvent(
   state.boardTaskAttemptsByTaskId = {
     ...state.boardTaskAttemptsByTaskId,
     [taskId]: next,
+  };
+}
+
+export function patchTaskDecompositionFromEvent(
+  state: Pick<TasksState, "boardTasks" | "boardDecompositionRunsByParentTaskId">,
+  payload: unknown,
+) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const parentTask = (payload as { parentTask?: TaskDto }).parentTask;
+  const children = (payload as { children?: TaskDto[] }).children;
+  const decompositionRun = (payload as { decompositionRun?: TaskDecompositionRunDto })
+    .decompositionRun;
+  if (!parentTask || !decompositionRun || decompositionRun.parentTaskId !== parentTask.id) {
+    return;
+  }
+  patchTaskInList(state, parentTask);
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      if (!child || typeof child.id !== "string") {
+        continue;
+      }
+      patchTaskInList(state, child);
+    }
+  }
+  state.boardDecompositionRunsByParentTaskId = {
+    ...state.boardDecompositionRunsByParentTaskId,
+    [parentTask.id]: decompositionRun,
+  };
+}
+
+export function patchTaskReviewFromEvent(
+  state: Pick<TasksState, "boardTasks" | "boardTaskReviewsByTaskId">,
+  payload: unknown,
+) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const task = (payload as { task?: TaskDto }).task;
+  const review = (payload as { review?: TaskReviewDto }).review;
+  if (!task || !review || review.taskId !== task.id) {
+    return;
+  }
+  patchTaskInList(state, task);
+  state.boardTaskReviewsByTaskId = {
+    ...state.boardTaskReviewsByTaskId,
+    [task.id]: review,
   };
 }
 

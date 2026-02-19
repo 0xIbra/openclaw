@@ -36,6 +36,17 @@ import type {
   TaskQuestionThreadOpenInput,
   TaskQuestionThreadRecord,
   TaskQuestionThreadStatus,
+  TaskDecomposeInput,
+  TaskDecomposeResult,
+  TaskDecompositionRunRecord,
+  TaskDecompositionRunStatus,
+  TaskReviewCreateOrUpdateInput,
+  TaskReviewDecideInput,
+  TaskReviewDecideResult,
+  TaskReviewListFilters,
+  TaskReviewRecord,
+  TaskPendingReviewRecord,
+  TaskReviewStatus,
   TeamListFilters,
   TeamMemberRecord,
   TeamMemberUpsertInput,
@@ -184,6 +195,38 @@ type TaskQuestionThreadRow = {
   resolved_at_ms: number | null;
   created_at_ms: number;
   updated_at_ms: number;
+};
+
+type TaskDecompositionRunRow = {
+  id: string;
+  parent_task_id: string;
+  team_id: string | null;
+  lead_agent_id: string;
+  status: TaskDecompositionRunStatus;
+  planner_backend: string | null;
+  planner_session_id: string | null;
+  plan_json: string;
+  child_task_ids_json: string;
+  error_text: string | null;
+  dedupe_key: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
+type TaskReviewRow = {
+  id: string;
+  task_id: string;
+  team_id: string | null;
+  lead_agent_id: string;
+  status: TaskReviewStatus;
+  require_human_approval: number;
+  auto_approve_on_clean: number;
+  decision_actor: string | null;
+  decision_reason: string | null;
+  verdict_json: string;
+  created_at_ms: number;
+  updated_at_ms: number;
+  resolved_at_ms: number | null;
 };
 
 type TaskRowPatch = Partial<{
@@ -398,6 +441,42 @@ function mapTaskQuestionThreadRow(row: TaskQuestionThreadRow): TaskQuestionThrea
     resolvedAtMs: row.resolved_at_ms == null ? null : Number(row.resolved_at_ms),
     createdAtMs: Number(row.created_at_ms),
     updatedAtMs: Number(row.updated_at_ms),
+  };
+}
+
+function mapTaskDecompositionRunRow(row: TaskDecompositionRunRow): TaskDecompositionRunRecord {
+  return {
+    id: row.id,
+    parentTaskId: row.parent_task_id,
+    teamId: row.team_id ?? null,
+    leadAgentId: row.lead_agent_id,
+    status: row.status,
+    plannerBackend: row.planner_backend ?? null,
+    plannerSessionId: row.planner_session_id ?? null,
+    plan: asRecord(row.plan_json),
+    childTaskIds: asStringArray(row.child_task_ids_json),
+    errorText: row.error_text ?? null,
+    dedupeKey: row.dedupe_key ?? null,
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+  };
+}
+
+function mapTaskReviewRow(row: TaskReviewRow): TaskReviewRecord {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    teamId: row.team_id ?? null,
+    leadAgentId: row.lead_agent_id,
+    status: row.status,
+    requireHumanApproval: Number(row.require_human_approval) === 1,
+    autoApproveOnClean: Number(row.auto_approve_on_clean) === 1,
+    decisionActor: row.decision_actor ?? null,
+    decisionReason: row.decision_reason ?? null,
+    verdict: asRecord(row.verdict_json),
+    createdAtMs: Number(row.created_at_ms),
+    updatedAtMs: Number(row.updated_at_ms),
+    resolvedAtMs: row.resolved_at_ms == null ? null : Number(row.resolved_at_ms),
   };
 }
 
@@ -1016,6 +1095,40 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     return mapTaskRow({ row, dependsOnTaskIds, blockedByTaskIds });
   }
 
+  function listChildTasks(parentTaskId: string): TaskRecord[] {
+    const rows = db
+      .prepare(
+        `SELECT *
+         FROM tasks
+         WHERE parent_task_id = ?
+         ORDER BY created_at_ms ASC`,
+      )
+      .all(parentTaskId) as TaskRow[];
+    const ids = rows.map((row) => row.id);
+    const dependsByTask = listDependencyIdsByTaskIds(ids);
+    const blockedByTask = listIncompleteDependencyIdsByTaskIds(ids);
+    return rows.map((row) =>
+      mapTaskRow({
+        row,
+        dependsOnTaskIds: dependsByTask.get(row.id) ?? [],
+        blockedByTaskIds: blockedByTask.get(row.id) ?? [],
+      }),
+    );
+  }
+
+  function getLatestDecompositionRun(parentTaskId: string): TaskDecompositionRunRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM task_decomposition_runs
+         WHERE parent_task_id = ?
+         ORDER BY created_at_ms DESC
+         LIMIT 1`,
+      )
+      .get(parentTaskId) as TaskDecompositionRunRow | undefined;
+    return row ? mapTaskDecompositionRunRow(row) : null;
+  }
+
   function listTeamReadyTasks(teamId: string): TaskRecord[] {
     const rows = db
       .prepare(
@@ -1181,6 +1294,17 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     const values = entries.map(([, value]) => value);
     db.prepare(`UPDATE tasks SET ${setSql} WHERE id = ?`).run(...values, id);
     return getTask(id);
+  }
+
+  function setTaskStatus(taskId: string, status: TaskStatus, nowMs: number): TaskRecord | null {
+    db.prepare(
+      `UPDATE tasks
+       SET status = ?,
+           updated_at_ms = ?,
+           completed_at_ms = CASE WHEN ? = 'done' THEN COALESCE(completed_at_ms, ?) ELSE NULL END
+       WHERE id = ?`,
+    ).run(status, nowMs, status, nowMs, taskId);
+    return getTask(taskId);
   }
 
   function replaceTaskDependencies(taskId: string, dependsOnTaskIds: string[]): void {
@@ -1490,6 +1614,11 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
                FROM task_claims c
                WHERE c.task_id = t.id
                  AND c.state = 'active'
+             )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM tasks child
+               WHERE child.parent_task_id = t.id
              )
            ORDER BY
              CASE t.priority
@@ -2069,6 +2198,528 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     }
   }
 
+  function decomposeTask(input: TaskDecomposeInput, nowMs: number): TaskDecomposeResult | null {
+    const teamId = input.teamId ?? null;
+    const leadAgentId = input.leadAgentId.trim();
+    const dedupeKey = input.dedupeKey?.trim() || null;
+    const plannerBackend = input.plannerBackend?.trim() || null;
+    const plannerSessionId = input.plannerSessionId?.trim() || null;
+
+    const normalizedChildren = input.plan.children.map((child, index) => {
+      const localId = child.localId.trim() || `child-${index + 1}`;
+      return {
+        localId,
+        title: child.title.trim(),
+        description: child.description.trim(),
+        type: child.type,
+        priority: child.priority,
+        dependsOnLocalIds: [...new Set(child.dependsOnLocalIds.map((entry) => entry.trim()))]
+          .filter(Boolean)
+          .filter((entry) => entry !== localId),
+        tags: [...new Set((child.tags ?? []).map((entry) => entry.trim()).filter(Boolean))],
+        relevantPaths: [
+          ...new Set((child.relevantPaths ?? []).map((entry) => entry.trim()).filter(Boolean)),
+        ],
+      };
+    });
+
+    if (normalizedChildren.length < 1) {
+      return null;
+    }
+    if (normalizedChildren.length > 12) {
+      return null;
+    }
+
+    const localIdSet = new Set<string>();
+    for (const child of normalizedChildren) {
+      if (!child.title || !child.description) {
+        return null;
+      }
+      if (localIdSet.has(child.localId)) {
+        return null;
+      }
+      localIdSet.add(child.localId);
+    }
+    for (const child of normalizedChildren) {
+      for (const dependencyLocalId of child.dependsOnLocalIds) {
+        if (!localIdSet.has(dependencyLocalId)) {
+          return null;
+        }
+      }
+    }
+
+    const edges = new Map<string, string[]>(normalizedChildren.map((entry) => [entry.localId, []]));
+    for (const child of normalizedChildren) {
+      edges.set(child.localId, [...child.dependsOnLocalIds]);
+    }
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const hasCycle = (node: string): boolean => {
+      if (visiting.has(node)) {
+        return true;
+      }
+      if (visited.has(node)) {
+        return false;
+      }
+      visiting.add(node);
+      for (const dep of edges.get(node) ?? []) {
+        if (hasCycle(dep)) {
+          return true;
+        }
+      }
+      visiting.delete(node);
+      visited.add(node);
+      return false;
+    };
+    for (const node of localIdSet) {
+      if (hasCycle(node)) {
+        return null;
+      }
+    }
+
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const parent = getTask(input.parentTaskId);
+      if (!parent) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const existingChildren = listChildTasks(parent.id);
+      const latestRun = getLatestDecompositionRun(parent.id);
+      if (existingChildren.length > 0 && !input.force) {
+        if (latestRun) {
+          db.exec("COMMIT");
+          return {
+            parentTask: parent,
+            children: existingChildren,
+            decompositionRun: latestRun,
+            deduped: true,
+          };
+        }
+
+        const fallbackRunId = randomUUID();
+        db.prepare(
+          `INSERT INTO task_decomposition_runs (
+            id,
+            parent_task_id,
+            team_id,
+            lead_agent_id,
+            status,
+            planner_backend,
+            planner_session_id,
+            plan_json,
+            child_task_ids_json,
+            error_text,
+            dedupe_key,
+            created_at_ms,
+            updated_at_ms
+          ) VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        ).run(
+          fallbackRunId,
+          parent.id,
+          teamId ?? parent.teamId ?? null,
+          leadAgentId,
+          plannerBackend,
+          plannerSessionId,
+          normalizeJsonRecord({
+            summary: input.plan.summary ?? null,
+            children: normalizedChildren,
+          }),
+          JSON.stringify(existingChildren.map((entry) => entry.id)),
+          dedupeKey,
+          nowMs,
+          nowMs,
+        );
+        const inserted = getLatestDecompositionRun(parent.id);
+        if (!inserted) {
+          throw new Error(`failed to persist decomposition run for parent: ${parent.id}`);
+        }
+        db.exec("COMMIT");
+        return {
+          parentTask: parent,
+          children: existingChildren,
+          decompositionRun: inserted,
+          deduped: true,
+        };
+      }
+
+      if (input.force) {
+        db.prepare(
+          `UPDATE task_decomposition_runs
+           SET status = 'superseded',
+               updated_at_ms = ?
+           WHERE parent_task_id = ?
+             AND status != 'superseded'`,
+        ).run(nowMs, parent.id);
+        db.prepare(
+          `UPDATE tasks
+           SET status = CASE WHEN status = 'done' THEN status ELSE 'blocked' END,
+               updated_at_ms = ?
+           WHERE parent_task_id = ?`,
+        ).run(nowMs, parent.id);
+      }
+
+      const runId = randomUUID();
+      db.prepare(
+        `INSERT INTO task_decomposition_runs (
+          id,
+          parent_task_id,
+          team_id,
+          lead_agent_id,
+          status,
+          planner_backend,
+          planner_session_id,
+          plan_json,
+          child_task_ids_json,
+          error_text,
+          dedupe_key,
+          created_at_ms,
+          updated_at_ms
+        ) VALUES (?, ?, ?, ?, 'planned', ?, ?, ?, '[]', NULL, ?, ?, ?)`,
+      ).run(
+        runId,
+        parent.id,
+        teamId ?? parent.teamId ?? null,
+        leadAgentId,
+        plannerBackend,
+        plannerSessionId,
+        normalizeJsonRecord({
+          summary: input.plan.summary ?? null,
+          children: normalizedChildren,
+        }),
+        dedupeKey,
+        nowMs,
+        nowMs,
+      );
+
+      const childIdByLocalId = new Map<string, string>();
+      for (const child of normalizedChildren) {
+        childIdByLocalId.set(child.localId, randomUUID());
+      }
+
+      const childIds: string[] = [];
+      const insertTask = db.prepare(
+        `INSERT INTO tasks (
+          id,
+          project_id,
+          title,
+          description,
+          type,
+          priority,
+          complexity,
+          status,
+          parent_task_id,
+          assigned_agent_id,
+          team_id,
+          current_attempt_id,
+          max_attempts,
+          attempt_count,
+          relevant_paths_json,
+          tags_json,
+          created_by,
+          created_at_ms,
+          updated_at_ms,
+          started_at_ms,
+          completed_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'backlog', ?, NULL, ?, NULL, ?, 0, ?, ?, ?, ?, ?, NULL, NULL)`,
+      );
+      for (const child of normalizedChildren) {
+        const childId = childIdByLocalId.get(child.localId);
+        if (!childId) {
+          throw new Error(`missing child id for ${child.localId}`);
+        }
+        childIds.push(childId);
+        insertTask.run(
+          childId,
+          parent.projectId,
+          child.title,
+          child.description,
+          child.type,
+          child.priority,
+          null,
+          parent.id,
+          teamId ?? parent.teamId ?? null,
+          parent.maxAttempts,
+          JSON.stringify(child.relevantPaths),
+          JSON.stringify(child.tags),
+          input.requestedBy?.trim() || leadAgentId,
+          nowMs,
+          nowMs,
+        );
+      }
+
+      const insertDependency = db.prepare(
+        `INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES (?, ?)`,
+      );
+      for (const child of normalizedChildren) {
+        const childTaskId = childIdByLocalId.get(child.localId);
+        if (!childTaskId) {
+          continue;
+        }
+        for (const dependencyLocalId of child.dependsOnLocalIds) {
+          const dependencyTaskId = childIdByLocalId.get(dependencyLocalId);
+          if (!dependencyTaskId) {
+            continue;
+          }
+          insertDependency.run(childTaskId, dependencyTaskId);
+        }
+      }
+
+      db.prepare(
+        `UPDATE task_decomposition_runs
+         SET status = 'applied',
+             child_task_ids_json = ?,
+             updated_at_ms = ?
+         WHERE id = ?`,
+      ).run(JSON.stringify(childIds), nowMs, runId);
+
+      db.prepare(
+        `UPDATE tasks
+         SET assigned_agent_id = ?,
+             team_id = COALESCE(team_id, ?),
+             status = CASE
+               WHEN status = 'done' THEN status
+               WHEN status = 'running' THEN status
+               ELSE 'assigned'
+             END,
+             updated_at_ms = ?
+         WHERE id = ?`,
+      ).run(leadAgentId, teamId ?? parent.teamId ?? null, nowMs, parent.id);
+
+      const nextParent = getTask(parent.id);
+      const nextChildren = listChildTasks(parent.id).filter((child) => childIds.includes(child.id));
+      const run = getLatestDecompositionRun(parent.id);
+      if (!nextParent || !run) {
+        throw new Error(`failed to complete decomposition for parent: ${parent.id}`);
+      }
+
+      db.exec("COMMIT");
+      return {
+        parentTask: nextParent,
+        children: nextChildren,
+        decompositionRun: run,
+        deduped: false,
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  function createOrUpdateTaskReview(
+    input: TaskReviewCreateOrUpdateInput,
+    nowMs: number,
+  ): TaskReviewRecord | null {
+    const existing = db
+      .prepare(
+        `SELECT *
+         FROM task_review_records
+         WHERE task_id = ?
+           AND status IN ('pending_lead', 'pending_human')
+         ORDER BY created_at_ms DESC
+         LIMIT 1`,
+      )
+      .get(input.taskId) as TaskReviewRow | undefined;
+
+    const verdictJson = normalizeJsonRecord(input.verdict);
+    if (!existing) {
+      const id = randomUUID();
+      db.prepare(
+        `INSERT INTO task_review_records (
+          id,
+          task_id,
+          team_id,
+          lead_agent_id,
+          status,
+          require_human_approval,
+          auto_approve_on_clean,
+          decision_actor,
+          decision_reason,
+          verdict_json,
+          created_at_ms,
+          updated_at_ms,
+          resolved_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        id,
+        input.taskId,
+        input.teamId ?? null,
+        input.leadAgentId,
+        input.status,
+        input.requireHumanApproval ? 1 : 0,
+        input.autoApproveOnClean ? 1 : 0,
+        input.decisionActor ?? null,
+        input.decisionReason ?? null,
+        verdictJson,
+        nowMs,
+        nowMs,
+        input.resolvedAtMs ?? null,
+      );
+      const created = db
+        .prepare(`SELECT * FROM task_review_records WHERE id = ? LIMIT 1`)
+        .get(id) as TaskReviewRow | undefined;
+      return created ? mapTaskReviewRow(created) : null;
+    }
+
+    db.prepare(
+      `UPDATE task_review_records
+       SET team_id = ?,
+           lead_agent_id = ?,
+           status = ?,
+           require_human_approval = ?,
+           auto_approve_on_clean = ?,
+           decision_actor = ?,
+           decision_reason = ?,
+           verdict_json = ?,
+           updated_at_ms = ?,
+           resolved_at_ms = ?
+       WHERE id = ?`,
+    ).run(
+      input.teamId ?? null,
+      input.leadAgentId,
+      input.status,
+      input.requireHumanApproval ? 1 : 0,
+      input.autoApproveOnClean ? 1 : 0,
+      input.decisionActor ?? null,
+      input.decisionReason ?? null,
+      verdictJson,
+      nowMs,
+      input.resolvedAtMs ?? null,
+      existing.id,
+    );
+
+    const updated = db
+      .prepare(`SELECT * FROM task_review_records WHERE id = ? LIMIT 1`)
+      .get(existing.id) as TaskReviewRow | undefined;
+    return updated ? mapTaskReviewRow(updated) : null;
+  }
+
+  function getOpenTaskReview(taskId: string): TaskReviewRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM task_review_records
+         WHERE task_id = ?
+           AND status IN ('pending_lead', 'pending_human')
+         ORDER BY created_at_ms DESC
+         LIMIT 1`,
+      )
+      .get(taskId) as TaskReviewRow | undefined;
+    return row ? mapTaskReviewRow(row) : null;
+  }
+
+  function getLatestTaskReview(taskId: string): TaskReviewRecord | null {
+    const row = db
+      .prepare(
+        `SELECT *
+         FROM task_review_records
+         WHERE task_id = ?
+         ORDER BY created_at_ms DESC
+         LIMIT 1`,
+      )
+      .get(taskId) as TaskReviewRow | undefined;
+    return row ? mapTaskReviewRow(row) : null;
+  }
+
+  function listPendingTaskReviews(filters?: TaskReviewListFilters): TaskPendingReviewRecord[] {
+    const clauses: string[] = ["r.status IN ('pending_lead', 'pending_human')"];
+    const values: Array<string | number> = [];
+    if (filters?.teamId?.trim()) {
+      clauses.push("r.team_id = ?");
+      values.push(filters.teamId.trim());
+    }
+    if (filters?.projectId?.trim()) {
+      clauses.push("t.project_id = ?");
+      values.push(filters.projectId.trim());
+    }
+    const limit = Math.max(1, Math.min(500, Math.floor(filters?.limit ?? 100)));
+    const rows = db
+      .prepare(
+        `SELECT r.*
+         FROM task_review_records r
+         JOIN tasks t ON t.id = r.task_id
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY r.updated_at_ms DESC
+         LIMIT ?`,
+      )
+      .all(...values, limit) as TaskReviewRow[];
+
+    return rows
+      .map((row) => {
+        const task = getTask(row.task_id);
+        if (!task) {
+          return null;
+        }
+        return {
+          review: mapTaskReviewRow(row),
+          task,
+        };
+      })
+      .filter((entry): entry is TaskPendingReviewRecord => entry != null);
+  }
+
+  function decideTaskReview(
+    input: TaskReviewDecideInput,
+    nowMs: number,
+  ): TaskReviewDecideResult | null {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = db
+        .prepare(
+          `SELECT *
+           FROM task_review_records
+           WHERE task_id = ?
+             AND status IN ('pending_lead', 'pending_human')
+           ORDER BY created_at_ms DESC
+           LIMIT 1`,
+        )
+        .get(input.taskId) as TaskReviewRow | undefined;
+      if (!current) {
+        db.exec("COMMIT");
+        return null;
+      }
+
+      const decisionStatus: TaskReviewStatus =
+        input.decision === "approve" ? "approved" : "rejected";
+      db.prepare(
+        `UPDATE task_review_records
+         SET status = ?,
+             decision_actor = ?,
+             decision_reason = ?,
+             updated_at_ms = ?,
+             resolved_at_ms = ?
+         WHERE id = ?`,
+      ).run(decisionStatus, input.actor, input.reason ?? null, nowMs, nowMs, current.id);
+
+      const nextTaskStatus: TaskStatus = input.decision === "approve" ? "done" : "blocked";
+      db.prepare(
+        `UPDATE tasks
+         SET status = ?,
+             updated_at_ms = ?,
+             completed_at_ms = CASE WHEN ? = 'done' THEN COALESCE(completed_at_ms, ?) ELSE NULL END
+         WHERE id = ?`,
+      ).run(nextTaskStatus, nowMs, nextTaskStatus, nowMs, input.taskId);
+
+      const reviewRow = db
+        .prepare(`SELECT * FROM task_review_records WHERE id = ? LIMIT 1`)
+        .get(current.id) as TaskReviewRow | undefined;
+      const task = getTask(input.taskId);
+      if (!reviewRow || !task) {
+        throw new Error(`failed to decide review for task: ${input.taskId}`);
+      }
+
+      db.exec("COMMIT");
+      return {
+        task,
+        review: mapTaskReviewRow(reviewRow),
+      };
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   function openQuestionThread(
     input: TaskQuestionThreadOpenInput,
     nowMs: number,
@@ -2435,11 +3086,14 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     upsertProjectRepo,
     listTasks,
     getTask,
+    listChildTasks,
+    getLatestDecompositionRun,
     listTeamReadyTasks,
     listTeamActiveTasks,
     assignTaskToAgent,
     createTask,
     updateTask,
+    setTaskStatus,
     replaceTaskDependencies,
     countIncompleteDependencies,
     createTaskAttempt,
@@ -2458,6 +3112,12 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     failAttempt,
     forceFailActiveTask,
     requeueTask,
+    decomposeTask,
+    createOrUpdateTaskReview,
+    getOpenTaskReview,
+    getLatestTaskReview,
+    listPendingTaskReviews,
+    decideTaskReview,
     openQuestionThread,
     updateQuestionThread,
     markQuestionAnswered,

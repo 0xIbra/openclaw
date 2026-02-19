@@ -22,6 +22,9 @@ import type {
   TaskAttemptStartResult,
   TaskAttemptUpdateInput,
   TaskForceFailActiveInput,
+  TaskDecomposeInput,
+  TaskDecomposeResult,
+  TaskDecompositionRunRecord,
   TaskClaimLeaseInput,
   TaskClaimLeaseResult,
   TaskClaimNextInput,
@@ -34,6 +37,12 @@ import type {
   TaskRecord,
   TaskQuestionThreadRecord,
   TaskQuestionThreadStatus,
+  TaskPendingReviewRecord,
+  TaskReviewCreateOrUpdateInput,
+  TaskReviewDecideInput,
+  TaskReviewDecideResult,
+  TaskReviewListFilters,
+  TaskReviewRecord,
   TaskTransitionInput,
   TaskUpdateInput,
   TeamCreateInput,
@@ -123,6 +132,21 @@ function normalizeRole(role: string): TeamMemberRole {
     throw new TaskServiceError("invalid_input", `invalid team member role '${role}'`);
   }
   return normalized;
+}
+
+function readBooleanSetting(
+  settings: Record<string, unknown> | undefined,
+  keys: string[],
+  fallback: boolean,
+): boolean {
+  let current: unknown = settings;
+  for (const key of keys) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return fallback;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "boolean" ? current : fallback;
 }
 
 export class TaskService {
@@ -441,6 +465,141 @@ export class TaskService {
     return this.store.getTask(id);
   }
 
+  listChildTasks(parentTaskId: string): TaskRecord[] {
+    const parent = this.store.getTask(requireNonEmpty(parentTaskId, "parentTaskId"));
+    if (!parent) {
+      throw new TaskServiceError("not_found", `task not found: ${parentTaskId}`);
+    }
+    return this.store.listChildTasks(parent.id);
+  }
+
+  getLatestDecompositionRun(parentTaskId: string): TaskDecompositionRunRecord | null {
+    const parent = this.store.getTask(requireNonEmpty(parentTaskId, "parentTaskId"));
+    if (!parent) {
+      throw new TaskServiceError("not_found", `task not found: ${parentTaskId}`);
+    }
+    return this.store.getLatestDecompositionRun(parent.id);
+  }
+
+  resolveTeamReviewPolicy(teamId: string | null | undefined): {
+    requireHumanApproval: boolean;
+    autoApproveOnCleanResult: boolean;
+    autoDecompose: boolean;
+  } {
+    const team = teamId ? this.store.getTeam(teamId) : null;
+    const settings = team?.settings ?? {};
+    return {
+      requireHumanApproval: readBooleanSetting(settings, ["review", "requireHumanApproval"], false),
+      autoApproveOnCleanResult: readBooleanSetting(
+        settings,
+        ["review", "autoApproveOnCleanResult"],
+        true,
+      ),
+      autoDecompose: readBooleanSetting(settings, ["decomposition", "auto"], true),
+    };
+  }
+
+  decomposeTask(input: TaskDecomposeInput): TaskDecomposeResult {
+    const parentTaskId = requireNonEmpty(input.parentTaskId, "parentTaskId");
+    const parent = this.store.getTask(parentTaskId);
+    if (!parent) {
+      throw new TaskServiceError("not_found", `task not found: ${parentTaskId}`);
+    }
+    if (parent.parentTaskId) {
+      throw new TaskServiceError(
+        "invalid_input",
+        `task '${parentTaskId}' is not a parent/root task`,
+      );
+    }
+    if (!input.plan || !Array.isArray(input.plan.children) || input.plan.children.length < 1) {
+      throw new TaskServiceError("invalid_input", "decomposition plan must include children");
+    }
+
+    const leadAgentId = requireNonEmpty(input.leadAgentId, "leadAgentId");
+    const result = this.store.decomposeTask(
+      {
+        ...input,
+        parentTaskId: parent.id,
+        teamId: normalizeOptionalNullableString(input.teamId) ?? parent.teamId,
+        leadAgentId,
+        requestedBy: normalizeOptionalNullableString(input.requestedBy),
+        force: input.force === true,
+        plannerBackend: normalizeOptionalNullableString(input.plannerBackend),
+        plannerSessionId: normalizeOptionalNullableString(input.plannerSessionId),
+        dedupeKey: normalizeOptionalNullableString(input.dedupeKey),
+      },
+      this.now(),
+    );
+    if (!result) {
+      throw new TaskServiceError("conflict", `task cannot be decomposed: ${parentTaskId}`);
+    }
+    return result;
+  }
+
+  createOrUpdateTaskReview(input: TaskReviewCreateOrUpdateInput): TaskReviewRecord {
+    const task = this.store.getTask(requireNonEmpty(input.taskId, "taskId"));
+    if (!task) {
+      throw new TaskServiceError("not_found", `task not found: ${input.taskId}`);
+    }
+    const leadAgentId = requireNonEmpty(input.leadAgentId, "leadAgentId");
+    const review = this.store.createOrUpdateTaskReview(
+      {
+        ...input,
+        taskId: task.id,
+        teamId: normalizeOptionalNullableString(input.teamId) ?? task.teamId,
+        leadAgentId,
+        decisionActor: normalizeOptionalNullableString(input.decisionActor),
+        decisionReason: normalizeOptionalNullableString(input.decisionReason),
+      },
+      this.now(),
+    );
+    if (!review) {
+      throw new TaskServiceError("conflict", `task review update failed: ${task.id}`);
+    }
+    return review;
+  }
+
+  getOpenTaskReview(taskId: string): TaskReviewRecord | null {
+    if (!this.store.taskExists(requireNonEmpty(taskId, "taskId"))) {
+      throw new TaskServiceError("not_found", `task not found: ${taskId}`);
+    }
+    return this.store.getOpenTaskReview(taskId);
+  }
+
+  getLatestTaskReview(taskId: string): TaskReviewRecord | null {
+    if (!this.store.taskExists(requireNonEmpty(taskId, "taskId"))) {
+      throw new TaskServiceError("not_found", `task not found: ${taskId}`);
+    }
+    return this.store.getLatestTaskReview(taskId);
+  }
+
+  listPendingTaskReviews(filters?: TaskReviewListFilters): TaskPendingReviewRecord[] {
+    return this.store.listPendingTaskReviews({
+      teamId: normalizeOptionalString(filters?.teamId),
+      projectId: normalizeOptionalString(filters?.projectId),
+      limit: filters?.limit,
+    });
+  }
+
+  decideTaskReview(input: TaskReviewDecideInput): TaskReviewDecideResult {
+    const taskId = requireNonEmpty(input.taskId, "taskId");
+    const actor = requireNonEmpty(input.actor, "actor");
+    const decision = input.decision;
+    const result = this.store.decideTaskReview(
+      {
+        taskId,
+        decision,
+        actor,
+        reason: normalizeOptionalNullableString(input.reason),
+      },
+      this.now(),
+    );
+    if (!result) {
+      throw new TaskServiceError("conflict", `no open review for task: ${taskId}`);
+    }
+    return result;
+  }
+
   createTask(input: TaskCreateInput): TaskRecord {
     const project = this.store.getProject(input.projectId);
     if (!project) {
@@ -648,6 +807,18 @@ export class TaskService {
       throw new TaskServiceError("not_found", `task not found: ${input.id}`);
     }
     return updated;
+  }
+
+  setTaskStatus(taskId: string, status: TaskRecord["status"]): TaskRecord {
+    const existing = this.store.getTask(requireNonEmpty(taskId, "taskId"));
+    if (!existing) {
+      throw new TaskServiceError("not_found", `task not found: ${taskId}`);
+    }
+    const next = this.store.setTaskStatus(existing.id, status, this.now());
+    if (!next) {
+      throw new TaskServiceError("conflict", `failed to update task status: ${taskId}`);
+    }
+    return next;
   }
 
   claimNextTask(input: TaskClaimNextInput): TaskClaimLeaseResult | null {

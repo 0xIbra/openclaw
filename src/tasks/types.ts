@@ -43,6 +43,19 @@ export const BUS_MESSAGE_STATE_VALUES = [
   "dead_letter",
 ] as const;
 export const TASK_QUESTION_THREAD_STATUS_VALUES = ["open", "answered", "escalated"] as const;
+export const TASK_DECOMPOSITION_RUN_STATUS_VALUES = [
+  "planned",
+  "applied",
+  "failed",
+  "superseded",
+] as const;
+export const TASK_REVIEW_STATUS_VALUES = [
+  "pending_lead",
+  "pending_human",
+  "approved",
+  "rejected",
+  "blocked",
+] as const;
 
 export type TaskType = (typeof TASK_TYPE_VALUES)[number];
 export type TaskPriority = (typeof TASK_PRIORITY_VALUES)[number];
@@ -53,6 +66,8 @@ export type TeamMemberRole = (typeof TEAM_MEMBER_ROLE_VALUES)[number];
 export type TaskClaimState = (typeof TASK_CLAIM_STATE_VALUES)[number];
 export type BusMessageState = (typeof BUS_MESSAGE_STATE_VALUES)[number];
 export type TaskQuestionThreadStatus = (typeof TASK_QUESTION_THREAD_STATUS_VALUES)[number];
+export type TaskDecompositionRunStatus = (typeof TASK_DECOMPOSITION_RUN_STATUS_VALUES)[number];
+export type TaskReviewStatus = (typeof TASK_REVIEW_STATUS_VALUES)[number];
 
 export type TaskCreatedBy = string;
 
@@ -424,6 +439,52 @@ export type TaskQuestionThreadRecord = {
   updatedAtMs: number;
 };
 
+export type TaskDecompositionPlan = {
+  summary?: string | null;
+  children: Array<{
+    localId: string;
+    title: string;
+    description: string;
+    type: TaskType;
+    priority: TaskPriority;
+    dependsOnLocalIds: string[];
+    tags?: string[];
+    relevantPaths?: string[];
+  }>;
+};
+
+export type TaskDecompositionRunRecord = {
+  id: string;
+  parentTaskId: string;
+  teamId: string | null;
+  leadAgentId: string;
+  status: TaskDecompositionRunStatus;
+  plannerBackend: string | null;
+  plannerSessionId: string | null;
+  plan: Record<string, unknown>;
+  childTaskIds: string[];
+  errorText: string | null;
+  dedupeKey: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type TaskReviewRecord = {
+  id: string;
+  taskId: string;
+  teamId: string | null;
+  leadAgentId: string;
+  status: TaskReviewStatus;
+  requireHumanApproval: boolean;
+  autoApproveOnClean: boolean;
+  decisionActor: string | null;
+  decisionReason: string | null;
+  verdict: Record<string, unknown>;
+  createdAtMs: number;
+  updatedAtMs: number;
+  resolvedAtMs: number | null;
+};
+
 export type TaskQuestionThreadOpenInput = {
   teamId: string;
   taskId?: string | null;
@@ -450,6 +511,61 @@ export type LeadEscalationRecord = {
   requesterAgentId: string;
   questionMessageId: string;
   escalatedAtMs: number;
+};
+
+export type TaskDecomposeInput = {
+  parentTaskId: string;
+  teamId?: string | null;
+  leadAgentId: string;
+  requestedBy?: string | null;
+  force?: boolean;
+  plannerBackend?: string | null;
+  plannerSessionId?: string | null;
+  dedupeKey?: string | null;
+  plan: TaskDecompositionPlan;
+};
+
+export type TaskDecomposeResult = {
+  parentTask: TaskRecord;
+  children: TaskRecord[];
+  decompositionRun: TaskDecompositionRunRecord;
+  deduped: boolean;
+};
+
+export type TaskPendingReviewRecord = {
+  review: TaskReviewRecord;
+  task: TaskRecord;
+};
+
+export type TaskReviewListFilters = {
+  teamId?: string;
+  projectId?: string;
+  limit?: number;
+};
+
+export type TaskReviewCreateOrUpdateInput = {
+  taskId: string;
+  teamId?: string | null;
+  leadAgentId: string;
+  status: TaskReviewStatus;
+  requireHumanApproval: boolean;
+  autoApproveOnClean: boolean;
+  decisionActor?: string | null;
+  decisionReason?: string | null;
+  verdict?: Record<string, unknown>;
+  resolvedAtMs?: number | null;
+};
+
+export type TaskReviewDecideInput = {
+  taskId: string;
+  decision: "approve" | "reject";
+  actor: string;
+  reason?: string | null;
+};
+
+export type TaskReviewDecideResult = {
+  task: TaskRecord;
+  review: TaskReviewRecord;
 };
 
 export type TaskCreateInput = {

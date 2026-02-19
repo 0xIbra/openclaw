@@ -44,7 +44,7 @@ describe("task sqlite v3 migration", () => {
     const db = openTaskDatabase({ dbPath });
     initializeTaskSchema(db);
 
-    expect(getTaskSchemaVersion(db)).toBe(4);
+    expect(getTaskSchemaVersion(db)).toBe(5);
     const busTable = db
       .prepare(
         `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_bus_messages' LIMIT 1`,
@@ -62,7 +62,7 @@ describe("task sqlite v3 migration", () => {
     expect(taskRow).toEqual({ id: task.id, project_id: project.id });
 
     initializeTaskSchema(db);
-    expect(getTaskSchemaVersion(db)).toBe(4);
+    expect(getTaskSchemaVersion(db)).toBe(5);
 
     db.close();
   });

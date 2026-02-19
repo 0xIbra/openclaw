@@ -16,6 +16,8 @@ function createState(overrides: Partial<TasksState> = {}): TasksState {
     boardFilterTag: "",
     boardFilterQuery: "",
     boardTaskAttemptsByTaskId: {},
+    boardTaskReviewsByTaskId: {},
+    boardDecompositionRunsByParentTaskId: {},
     boardRuntimeStatus: null,
     ...overrides,
   };

@@ -69,4 +69,71 @@ describe("tasks tool", () => {
       "update requires at least one task field",
     );
   });
+
+  it("maps decomposition and review actions to gateway methods", async () => {
+    const tool = createTasksTool();
+
+    await tool.execute("call-decompose-auto", {
+      action: "decompose",
+      id: "task-parent-auto",
+      requestedBy: "ares",
+    });
+    await tool.execute("call-decompose", {
+      action: "decompose",
+      id: "task-parent",
+      requestedBy: "ares",
+      planSummary: "split parent",
+      planChildren: [
+        {
+          localId: "a",
+          title: "child-a",
+          description: "do a",
+          type: "feature",
+          priority: "high",
+          dependsOnLocalIds: [],
+        },
+      ],
+    });
+    await tool.execute("call-review-list", {
+      action: "reviewListPending",
+      teamId: "team-1",
+      limit: 5,
+    });
+    await tool.execute("call-review-decide", {
+      action: "reviewDecide",
+      id: "task-parent",
+      decision: "approve",
+      actor: "control-ui",
+      reason: "clean result",
+    });
+
+    expect(callGatewayMock.mock.calls[0]?.[0]).toMatchObject({
+      method: "tasks.decompose",
+      params: expect.objectContaining({
+        taskId: "task-parent-auto",
+        requestedBy: "ares",
+        plan: undefined,
+      }),
+    });
+    expect(callGatewayMock.mock.calls[1]?.[0]).toMatchObject({
+      method: "tasks.decompose",
+      params: expect.objectContaining({
+        taskId: "task-parent",
+        requestedBy: "ares",
+      }),
+    });
+    expect(callGatewayMock.mock.calls[2]?.[0]).toMatchObject({
+      method: "tasks.review.listPending",
+      params: { teamId: "team-1", projectId: undefined, limit: 5 },
+    });
+    expect(callGatewayMock.mock.calls[3]?.[0]).toMatchObject({
+      method: "tasks.review.decide",
+      params: {
+        taskId: "task-parent",
+        decision: "approve",
+        actor: "control-ui",
+        reason: "clean result",
+      },
+    });
+  });
 });

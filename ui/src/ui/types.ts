@@ -426,6 +426,52 @@ export type TaskAttemptDto = {
   updatedAtMs: number | null;
 };
 
+export type TaskDecompositionRunStatus = "planned" | "applied" | "failed" | "superseded";
+
+export type TaskDecompositionRunDto = {
+  id: string;
+  parentTaskId: string;
+  teamId: string | null;
+  leadAgentId: string;
+  status: TaskDecompositionRunStatus;
+  plannerBackend: string | null;
+  plannerSessionId: string | null;
+  plan: Record<string, unknown>;
+  childTaskIds: string[];
+  errorText: string | null;
+  dedupeKey: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type TaskReviewStatus =
+  | "pending_lead"
+  | "pending_human"
+  | "approved"
+  | "rejected"
+  | "blocked";
+
+export type TaskReviewDto = {
+  id: string;
+  taskId: string;
+  teamId: string | null;
+  leadAgentId: string;
+  status: TaskReviewStatus;
+  requireHumanApproval: boolean;
+  autoApproveOnClean: boolean;
+  decisionActor: string | null;
+  decisionReason: string | null;
+  verdict: Record<string, unknown>;
+  createdAtMs: number;
+  updatedAtMs: number;
+  resolvedAtMs: number | null;
+};
+
+export type TaskPendingReviewItemDto = {
+  review: TaskReviewDto;
+  task: TaskDto;
+};
+
 export type TaskRuntimeWorkerDto = {
   agentId: string;
   teamIds: string[];

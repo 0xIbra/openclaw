@@ -108,6 +108,59 @@ export const TaskAttemptSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TaskDecompositionRunStatusSchema = Type.Union([
+  Type.Literal("planned"),
+  Type.Literal("applied"),
+  Type.Literal("failed"),
+  Type.Literal("superseded"),
+]);
+
+export const TaskDecompositionRunSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    parentTaskId: NonEmptyString,
+    teamId: Type.Union([Type.String(), Type.Null()]),
+    leadAgentId: NonEmptyString,
+    status: TaskDecompositionRunStatusSchema,
+    plannerBackend: Type.Union([Type.String(), Type.Null()]),
+    plannerSessionId: Type.Union([Type.String(), Type.Null()]),
+    plan: Type.Record(Type.String(), Type.Unknown()),
+    childTaskIds: Type.Array(NonEmptyString),
+    errorText: Type.Union([Type.String(), Type.Null()]),
+    dedupeKey: Type.Union([Type.String(), Type.Null()]),
+    createdAtMs: Type.Integer({ minimum: 0 }),
+    updatedAtMs: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskReviewStatusSchema = Type.Union([
+  Type.Literal("pending_lead"),
+  Type.Literal("pending_human"),
+  Type.Literal("approved"),
+  Type.Literal("rejected"),
+  Type.Literal("blocked"),
+]);
+
+export const TaskReviewSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    taskId: NonEmptyString,
+    teamId: Type.Union([Type.String(), Type.Null()]),
+    leadAgentId: NonEmptyString,
+    status: TaskReviewStatusSchema,
+    requireHumanApproval: Type.Boolean(),
+    autoApproveOnClean: Type.Boolean(),
+    decisionActor: Type.Union([Type.String(), Type.Null()]),
+    decisionReason: Type.Union([Type.String(), Type.Null()]),
+    verdict: Type.Record(Type.String(), Type.Unknown()),
+    createdAtMs: Type.Integer({ minimum: 0 }),
+    updatedAtMs: Type.Integer({ minimum: 0 }),
+    resolvedAtMs: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
 export const TasksListParamsSchema = Type.Object(
   {
     projectId: Type.Optional(NonEmptyString),
@@ -348,6 +401,90 @@ export const TasksForceFailActiveResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TasksDecomposePlanChildSchema = Type.Object(
+  {
+    localId: NonEmptyString,
+    title: NonEmptyString,
+    description: NonEmptyString,
+    type: TaskTypeSchema,
+    priority: TaskPrioritySchema,
+    dependsOnLocalIds: Type.Array(NonEmptyString),
+    tags: Type.Optional(Type.Array(Type.String())),
+    relevantPaths: Type.Optional(Type.Array(Type.String())),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksDecomposeParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    force: Type.Optional(Type.Boolean()),
+    requestedBy: Type.Optional(Type.String()),
+    plan: Type.Optional(
+      Type.Object(
+        {
+          summary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+          children: Type.Array(TasksDecomposePlanChildSchema, { minItems: 1 }),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksDecomposeResultSchema = Type.Object(
+  {
+    parentTask: TaskSchema,
+    children: Type.Array(TaskSchema),
+    decompositionRun: TaskDecompositionRunSchema,
+    deduped: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewListPendingParamsSchema = Type.Object(
+  {
+    teamId: Type.Optional(NonEmptyString),
+    projectId: Type.Optional(NonEmptyString),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksPendingReviewItemSchema = Type.Object(
+  {
+    review: TaskReviewSchema,
+    task: TaskSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewListPendingResultSchema = Type.Object(
+  {
+    items: Type.Array(TasksPendingReviewItemSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewDecideParamsSchema = Type.Object(
+  {
+    taskId: NonEmptyString,
+    decision: Type.Union([Type.Literal("approve"), Type.Literal("reject")]),
+    actor: NonEmptyString,
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewDecideResultSchema = Type.Object(
+  {
+    task: TaskSchema,
+    review: TaskReviewSchema,
+  },
+  { additionalProperties: false },
+);
+
 export const TasksChangedEventSchema = Type.Object(
   {
     reason: Type.Union([
@@ -474,6 +611,41 @@ export const TasksEscalatedEventSchema = Type.Object(
     threadId: NonEmptyString,
     taskId: Type.Union([Type.String(), Type.Null()]),
     requesterAgentId: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksDecompositionChangedEventSchema = Type.Object(
+  {
+    reason: Type.Union([Type.Literal("created"), Type.Literal("updated")]),
+    parentTask: TaskSchema,
+    children: Type.Array(TaskSchema),
+    decompositionRun: TaskDecompositionRunSchema,
+    deduped: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewChangedEventSchema = Type.Object(
+  {
+    reason: Type.Union([
+      Type.Literal("pending_lead"),
+      Type.Literal("pending_human"),
+      Type.Literal("approved"),
+      Type.Literal("rejected"),
+      Type.Literal("blocked"),
+    ]),
+    task: TaskSchema,
+    review: TaskReviewSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TasksReviewPendingEventSchema = Type.Object(
+  {
+    reason: Type.Literal("pending_human"),
+    task: TaskSchema,
+    review: TaskReviewSchema,
   },
   { additionalProperties: false },
 );

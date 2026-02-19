@@ -30,6 +30,8 @@ function createProps(overrides: Partial<BoardProps> = {}): BoardProps {
     modal: null,
     selectedTaskId: null,
     selectedTaskAttempts: [],
+    taskReviewsByTaskId: {},
+    decompositionRunsByParentTaskId: {},
     selectedTaskAttemptsLoading: false,
     runtimeStatus: {
       workers: [],
@@ -63,6 +65,10 @@ function createProps(overrides: Partial<BoardProps> = {}): BoardProps {
     onRequestRestartAgent: () => undefined,
     onRequestRequeueTask: () => undefined,
     onRequestForceFailTask: () => undefined,
+    onRequestDecomposeTask: () => undefined,
+    onRequestApproveParentTask: () => undefined,
+    onRequestRejectParentTask: () => undefined,
+    onConfirmReasonChange: () => undefined,
     ...overrides,
   };
 }
@@ -178,5 +184,113 @@ describe("board view", () => {
     });
     dropTarget?.dispatchEvent(event);
     expect(onMoveTask).toHaveBeenCalledWith("t-1", "running");
+  });
+
+  it("renders decomposition/review controls in task drawer", () => {
+    const onRequestDecomposeTask = vi.fn();
+    const onRequestApproveParentTask = vi.fn();
+    const onRequestRejectParentTask = vi.fn();
+
+    const parentTask = {
+      id: "parent-1",
+      projectId: "project-1",
+      title: "parent",
+      description: "parent task",
+      type: "feature" as const,
+      priority: "high" as const,
+      complexity: null,
+      status: "review" as const,
+      parentTaskId: null,
+      dependsOnTaskIds: [],
+      blockedByTaskIds: [],
+      assignedAgentId: "lead-agent",
+      teamId: "team-1",
+      currentAttemptId: null,
+      maxAttempts: 3,
+      attemptCount: 1,
+      relevantPaths: [],
+      tags: [],
+      createdBy: "human",
+      createdAtMs: 1,
+      updatedAtMs: 2,
+      startedAtMs: null,
+      completedAtMs: null,
+    };
+
+    const container = document.createElement("div");
+    render(
+      renderBoard(
+        createProps({
+          tasks: [
+            parentTask,
+            {
+              ...parentTask,
+              id: "child-1",
+              title: "child",
+              status: "done",
+              parentTaskId: "parent-1",
+            },
+          ],
+          selectedTaskId: "parent-1",
+          selectedTaskAttempts: [],
+          taskReviewsByTaskId: {
+            "parent-1": {
+              id: "review-1",
+              taskId: "parent-1",
+              teamId: "team-1",
+              leadAgentId: "lead-agent",
+              status: "pending_human",
+              requireHumanApproval: true,
+              autoApproveOnClean: true,
+              decisionActor: null,
+              decisionReason: null,
+              verdict: {},
+              createdAtMs: 1,
+              updatedAtMs: 1,
+              resolvedAtMs: null,
+            },
+          },
+          decompositionRunsByParentTaskId: {
+            "parent-1": {
+              id: "run-1",
+              parentTaskId: "parent-1",
+              teamId: "team-1",
+              leadAgentId: "lead-agent",
+              status: "applied",
+              plannerBackend: "test",
+              plannerSessionId: null,
+              plan: {},
+              childTaskIds: ["child-1"],
+              errorText: null,
+              dedupeKey: null,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+            },
+          },
+          onRequestDecomposeTask,
+          onRequestApproveParentTask,
+          onRequestRejectParentTask,
+        }),
+      ),
+      container,
+    );
+
+    const decomposeButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Decompose now",
+    );
+    decomposeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onRequestDecomposeTask).toHaveBeenCalledWith(parentTask);
+
+    const approveButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Approve parent",
+    );
+    approveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onRequestApproveParentTask).toHaveBeenCalledWith(parentTask);
+
+    const rejectButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Reject parent",
+    );
+    rejectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onRequestRejectParentTask).toHaveBeenCalledWith(parentTask);
   });
 });

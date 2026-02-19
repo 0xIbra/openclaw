@@ -64,7 +64,11 @@ describe("task lead runtime", () => {
   it("delegates ready team tasks to team members and publishes assignment bus messages", async () => {
     const dbPath = await createTempDbPath();
     const service = createTaskService({ dbPath });
-    const team = service.createTeam({ name: "Morpheus", leadAgentId: "lead-agent" });
+    const team = service.createTeam({
+      name: "Morpheus",
+      leadAgentId: "lead-agent",
+      settings: { decomposition: { auto: false } },
+    });
     service.upsertTeamMember({ teamId: team.id, agentId: "member-agent", role: "member" });
     const project = service.createProject({ name: "Lead Runtime" });
     const task = service.createTask({
@@ -103,7 +107,11 @@ describe("task lead runtime", () => {
   it("reminds and escalates unresolved question threads on timeout", async () => {
     const dbPath = await createTempDbPath();
     const service = createTaskService({ dbPath });
-    const team = service.createTeam({ name: "Nebuchadnezzar", leadAgentId: "lead-agent" });
+    const team = service.createTeam({
+      name: "Nebuchadnezzar",
+      leadAgentId: "lead-agent",
+      settings: { decomposition: { auto: false } },
+    });
     service.upsertTeamMember({ teamId: team.id, agentId: "member-agent", role: "member" });
 
     const lead = createTaskLead({
@@ -136,6 +144,125 @@ describe("task lead runtime", () => {
       receiverAgentId: "ares",
       messageType: "escalation",
     });
+
+    await lead.stop();
+    service.close();
+  });
+
+  it("auto-decomposes root tasks before delegation", async () => {
+    const dbPath = await createTempDbPath();
+    const service = createTaskService({ dbPath });
+    const team = service.createTeam({
+      name: "Architects",
+      leadAgentId: "lead-agent",
+      settings: { decomposition: { auto: true } },
+    });
+    const project = service.createProject({ name: "Auto Decompose" });
+    const parent = service.createTask({
+      projectId: project.id,
+      teamId: team.id,
+      title: "Build feature",
+      description: "Need decomposition",
+      type: "feature",
+      status: "backlog",
+    });
+
+    const lead = createTaskLead({
+      taskService: service,
+      teamId: team.id,
+      teamName: team.name,
+      leadAgentId: "lead-agent",
+      pollMs: 20,
+      decomposer: {
+        decompose: async () => ({
+          plannerBackend: "test",
+          plannerSessionId: "session-test",
+          plan: {
+            summary: "test plan",
+            children: [
+              {
+                localId: "s1",
+                title: "Implement",
+                description: "Ship code",
+                type: "feature",
+                priority: "high",
+                dependsOnLocalIds: [],
+              },
+              {
+                localId: "s2",
+                title: "Verify",
+                description: "Run validation",
+                type: "test",
+                priority: "medium",
+                dependsOnLocalIds: ["s1"],
+              },
+            ],
+          },
+        }),
+      },
+    });
+    lead.start();
+
+    await waitFor(() => service.listChildTasks(parent.id).length === 2);
+    const parentAfter = service.getTask(parent.id);
+    const run = service.getLatestDecompositionRun(parent.id);
+    expect(parentAfter?.assignedAgentId).toBe("lead-agent");
+    expect(run?.status).toBe("applied");
+
+    await lead.stop();
+    service.close();
+  });
+
+  it("marks parent blocked when a child hard-fails", async () => {
+    const dbPath = await createTempDbPath();
+    const service = createTaskService({ dbPath });
+    const team = service.createTeam({
+      name: "Sentinels",
+      leadAgentId: "lead-agent",
+      settings: { decomposition: { auto: false } },
+    });
+    const project = service.createProject({ name: "Parent Review" });
+    const parent = service.createTask({
+      projectId: project.id,
+      teamId: team.id,
+      title: "Parent",
+      description: "Parent task",
+      type: "feature",
+      status: "backlog",
+    });
+    const childDone = service.createTask({
+      projectId: project.id,
+      teamId: team.id,
+      parentTaskId: parent.id,
+      title: "Child done",
+      description: "done",
+      type: "feature",
+      status: "backlog",
+    });
+    const childFailed = service.createTask({
+      projectId: project.id,
+      teamId: team.id,
+      parentTaskId: parent.id,
+      title: "Child failed",
+      description: "failed",
+      type: "feature",
+      status: "backlog",
+    });
+    service.setTaskStatus(childDone.id, "done");
+    service.setTaskStatus(childFailed.id, "failed");
+
+    const lead = createTaskLead({
+      taskService: service,
+      teamId: team.id,
+      teamName: team.name,
+      leadAgentId: "lead-agent",
+      pollMs: 20,
+    });
+    lead.start();
+
+    await waitFor(() => service.getTask(parent.id)?.status === "blocked");
+    const latestReview = service.getLatestTaskReview(parent.id);
+    expect(latestReview?.status).toBe("blocked");
 
     await lead.stop();
     service.close();

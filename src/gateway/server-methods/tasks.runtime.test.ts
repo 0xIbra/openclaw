@@ -244,4 +244,139 @@ describe("gateway tasks runtime handlers", () => {
 
     fixture.taskService.close();
   });
+
+  it("handles decomposition and review RPC flows", async () => {
+    const fixture = await createFixture();
+    const team = fixture.taskService.createTeam({
+      name: "Review Team",
+      leadAgentId: "lead-agent",
+      settings: { decomposition: { auto: false } },
+    });
+    fixture.taskService.upsertTeamMember({
+      teamId: team.id,
+      agentId: "member-a",
+      role: "member",
+    });
+
+    await callMethod({
+      handler: projectsHandlers["projects.create"],
+      method: "projects.create",
+      payload: { name: "Phase 8" },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    const projectId = (
+      fixture.respond.mock.calls[0]?.[1] as { project?: { id?: string } } | undefined
+    )?.project?.id as string;
+
+    const parentTaskId = fixture.taskService.createTask({
+      projectId,
+      teamId: team.id,
+      title: "Parent task",
+      description: "Decompose this",
+      type: "feature",
+      status: "backlog",
+    }).id;
+
+    fixture.respond.mockClear();
+    await callMethod({
+      handler: tasksHandlers["tasks.decompose"],
+      method: "tasks.decompose",
+      payload: {
+        taskId: parentTaskId,
+        requestedBy: "control-ui",
+        plan: {
+          summary: "split parent",
+          children: [
+            {
+              localId: "c1",
+              title: "Child one",
+              description: "Implement first slice",
+              type: "feature",
+              priority: "high",
+              dependsOnLocalIds: [],
+            },
+            {
+              localId: "c2",
+              title: "Child two",
+              description: "Verify slice",
+              type: "test",
+              priority: "medium",
+              dependsOnLocalIds: ["c1"],
+            },
+          ],
+        },
+      },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    expect(fixture.respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        parentTask: expect.objectContaining({ id: parentTaskId }),
+        children: expect.arrayContaining([expect.objectContaining({ parentTaskId })]),
+        decompositionRun: expect.objectContaining({ parentTaskId }),
+      }),
+      undefined,
+    );
+    expect(fixture.broadcasts.some((entry) => entry.event === "tasks.decomposition.changed")).toBe(
+      true,
+    );
+
+    fixture.taskService.createOrUpdateTaskReview({
+      taskId: parentTaskId,
+      teamId: team.id,
+      leadAgentId: "lead-agent",
+      status: "pending_human",
+      requireHumanApproval: true,
+      autoApproveOnClean: true,
+      verdict: { clean: true },
+    });
+
+    fixture.respond.mockClear();
+    await callMethod({
+      handler: tasksHandlers["tasks.review.listPending"],
+      method: "tasks.review.listPending",
+      payload: { teamId: team.id, limit: 20 },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    expect(fixture.respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            task: expect.objectContaining({ id: parentTaskId }),
+            review: expect.objectContaining({ status: "pending_human" }),
+          }),
+        ]),
+      }),
+      undefined,
+    );
+
+    fixture.respond.mockClear();
+    await callMethod({
+      handler: tasksHandlers["tasks.review.decide"],
+      method: "tasks.review.decide",
+      payload: {
+        taskId: parentTaskId,
+        decision: "approve",
+        actor: "control-ui",
+        reason: "looks good",
+      },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    expect(fixture.respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        task: expect.objectContaining({ id: parentTaskId, status: "done" }),
+        review: expect.objectContaining({ status: "approved" }),
+      }),
+      undefined,
+    );
+    expect(fixture.broadcasts.some((entry) => entry.event === "tasks.review.changed")).toBe(true);
+
+    fixture.taskService.close();
+  });
 });

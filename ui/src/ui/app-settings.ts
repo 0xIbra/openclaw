@@ -25,7 +25,7 @@ import { loadPresence } from "./controllers/presence.ts";
 import { loadProjects } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
-import { loadRuntimeStatus, loadTasks } from "./controllers/tasks.ts";
+import { listPendingTaskReviews, loadRuntimeStatus, loadTasks } from "./controllers/tasks.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -206,6 +206,12 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "board") {
     await loadProjects(host as unknown as Parameters<typeof loadProjects>[0]);
     await loadTasks(host as unknown as Parameters<typeof loadTasks>[0]);
+    await listPendingTaskReviews(host as unknown as Parameters<typeof listPendingTaskReviews>[0], {
+      projectId:
+        (host as unknown as { boardSelectedProjectId?: string | null }).boardSelectedProjectId ??
+        undefined,
+      limit: 200,
+    }).catch(() => undefined);
     await loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined);
   }
   if (host.tab === "skills") {
