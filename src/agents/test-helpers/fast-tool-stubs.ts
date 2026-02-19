@@ -19,10 +19,7 @@ vi.mock("../tools/image-tool.js", () => ({
   createImageTool: () => stubTool("image"),
 }));
 
-vi.mock("../tools/web-tools.js", () => ({
-  createWebSearchTool: () => null,
-  createWebFetchTool: () => null,
-}));
+// web-tools.ts is now implemented, no need to mock
 
 vi.mock("../../plugins/tools.js", () => ({
   resolvePluginTools: () => [],

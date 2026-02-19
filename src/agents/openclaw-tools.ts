@@ -22,6 +22,7 @@ import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTasksTool } from "./tools/tasks-tool.js";
 import { createTeamsTool } from "./tools/teams-tool.js";
+import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 export function createOpenClawTools(options?: {
@@ -149,6 +150,8 @@ export function createOpenClawTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
+    createWebSearchTool(),
+    createWebFetchTool(),
     ...(imageTool ? [imageTool] : []),
   ];
 
