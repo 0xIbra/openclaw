@@ -5,6 +5,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
+import { createBrowserCliTool } from "./tools/browser-cli-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -91,10 +92,11 @@ export function createOpenClawTools(options?: {
         requireExplicitTarget: options?.requireExplicitMessageTarget,
       });
   const tools: AnyAgentTool[] = [
+    createBrowserCliTool(), // New playwright-cli based browser tool (preferred)
     createBrowserTool({
       sandboxBridgeUrl: options?.sandboxBrowserBridgeUrl,
       allowHostControl: options?.allowHostBrowserControl,
-    }),
+    }), // Legacy CDP-based browser tool
     createCanvasTool(),
     createNodesTool({
       agentSessionKey: options?.agentSessionKey,

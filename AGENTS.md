@@ -15,6 +15,19 @@
   - Core channel docs: `docs/channels/`
   - Core channel code: `src/telegram`, `src/discord`, `src/slack`, `src/signal`, `src/imessage`, `src/web` (WhatsApp web), `src/channels`, `src/routing`
   - Extensions (channel plugins): `extensions/*` (e.g. `extensions/msteams`, `extensions/matrix`, `extensions/zalo`, `extensions/zalouser`, `extensions/voice-call`)
+- **Browser automation**: **playwright-cli is the primary browser tool for agents**
+  - **Primary**: `src/browser-cli/` - Uses `@playwright/cli` for token-efficient browser automation
+    - **Agent skill**: `skills/browser-cli/SKILL.md` - Reference for AI agents
+    - **Docs**: `docs/tools/browser-agent-guide.md` - Complete agent guide
+    - Task types: `web`, `research`, `test:e2e` route to `createBrowserTaskExecutor()`
+    - Direct API: `BrowserClient` class for programmatic control
+    - Per-task profile isolation via `--profile=` flag
+    - Requires: `npm install -g @playwright/cli`
+    - **5-step pattern**: OPEN → SNAPSHOT → ACT (using refs like e12) → VERIFY → CLOSE
+  - **Legacy**: `src/browser/` - CDP-based browser control (101 files)
+    - Kept for backward compatibility with existing CLI and integrations
+    - Agents should NOT use this - use `browser-cli` instead
+    - Will be removed after full migration
 - When adding channels/extensions/apps/docs, update `.github/labeler.yml` and create matching GitHub labels (use existing channel/extension label colors).
 
 ## Docs Linking (Mintlify)

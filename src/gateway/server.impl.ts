@@ -18,6 +18,7 @@ import {
   loadConfig,
   migrateLegacyConfig,
   readConfigFileSnapshot,
+  STATE_DIR,
   writeConfigFile,
 } from "../config/config.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
@@ -47,7 +48,7 @@ import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import {
-  createEmbeddedTaskExecutorFactory,
+  createCompositeTaskExecutorFactory,
   createTaskLeadSupervisor,
   createTaskRuntimeSupervisor,
 } from "../tasks/runtime/index.js";
@@ -472,8 +473,10 @@ export async function startGatewayServer(
     ? createTaskRuntimeSupervisor({
         taskService,
         config: cfgAtStart,
-        createExecutor: createEmbeddedTaskExecutorFactory({
+        createExecutor: createCompositeTaskExecutorFactory({
+          dataDir: STATE_DIR,
           config: cfgAtStart,
+          headless: process.env.OPENCLAW_BROWSER_HEADLESS === "1",
         }),
         onWorkerEvent: (event) => {
           broadcast("tasks.worker.changed", event, { dropIfSlow: true });
