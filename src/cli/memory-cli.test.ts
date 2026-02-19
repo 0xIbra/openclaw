@@ -5,11 +5,32 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const getMemorySearchManager = vi.fn();
+const getLayeredMemorySearchMetrics = vi.fn(() => ({
+  searches: 0,
+  results: 0,
+  failures: 0,
+}));
+const getLayeredMemoryWritebackMetrics = vi.fn(() => ({
+  events: 0,
+  writes: 0,
+  failures: 0,
+}));
+const syncLayeredMemoryScope = vi.fn(async () => ({
+  scopeKind: "agent",
+  scopeId: "main",
+  provider: "openrouter",
+  model: "qwen/qwen3-embedding-8b",
+  files: 0,
+  chunks: 0,
+}));
 const loadConfig = vi.fn(() => ({}));
 const resolveDefaultAgentId = vi.fn(() => "main");
 
 vi.mock("../memory/index.js", () => ({
   getMemorySearchManager,
+  getLayeredMemorySearchMetrics,
+  getLayeredMemoryWritebackMetrics,
+  syncLayeredMemoryScope,
 }));
 
 vi.mock("../config/config.js", () => ({
@@ -23,6 +44,9 @@ vi.mock("../agents/agent-scope.js", () => ({
 afterEach(async () => {
   vi.restoreAllMocks();
   getMemorySearchManager.mockReset();
+  getLayeredMemorySearchMetrics.mockClear();
+  getLayeredMemoryWritebackMetrics.mockClear();
+  syncLayeredMemoryScope.mockReset();
   process.exitCode = undefined;
   const { setVerbose } = await import("../globals.js");
   setVerbose(false);

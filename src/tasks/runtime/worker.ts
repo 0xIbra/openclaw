@@ -6,6 +6,7 @@ import type {
   TaskWorkerOptions,
   TaskWorkerStatus,
 } from "./types.js";
+import { writeLayeredMemoryEntry } from "../../memory/layered-writeback.js";
 import {
   TASK_WORKER_HEARTBEAT_MS,
   TASK_WORKER_IDLE_POLL_MS,
@@ -110,6 +111,46 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
     } catch {
       // Best-effort checkpointing should not break execution flow.
     }
+  };
+
+  const persistLayeredLesson = (params: {
+    eventType: "attempt:finished" | "attempt:failed";
+    taskId: string;
+    attemptId: string;
+    projectId: string;
+    teamId: string | null;
+    summary: string;
+    errorText?: string | null;
+    testOutcome?: Record<string, unknown>;
+    changedFiles?: string[];
+    metadata?: Record<string, unknown>;
+  }) => {
+    if (!options.config) {
+      return;
+    }
+    void writeLayeredMemoryEntry({
+      cfg: options.config,
+      scopeRef: {
+        agentId: options.agentId,
+        projectId: params.projectId,
+        teamId: params.teamId,
+      },
+      entry: {
+        eventType: params.eventType,
+        taskId: params.taskId,
+        attemptId: params.attemptId,
+        summary: params.summary,
+        errorText: params.errorText ?? null,
+        testOutcome: params.testOutcome ?? {},
+        changedFiles: params.changedFiles ?? [],
+        metadata: {
+          workerAgentId: options.agentId,
+          ...params.metadata,
+        },
+      },
+    }).catch(() => {
+      // layered writeback is best-effort
+    });
   };
 
   const publishLifecycleMessage = (params: {
@@ -289,6 +330,20 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           metrics: persistedMetrics,
           changedFiles: execution.changedFiles,
         });
+        persistLayeredLesson({
+          eventType: "attempt:finished",
+          taskId: finished.task.id,
+          attemptId: finished.attempt.id,
+          projectId: finished.task.projectId,
+          teamId: finished.task.teamId,
+          summary: executionSummary,
+          testOutcome: execution.testOutcome,
+          changedFiles: execution.changedFiles,
+          metadata: {
+            metrics: persistedMetrics,
+            commandOutcome: execution.commandOutcome ?? {},
+          },
+        });
       } else {
         const failed = options.taskService.failAttempt({
           taskId: started.task.id,
@@ -313,6 +368,21 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           errorText: execution.errorText,
           metrics: persistedMetrics,
           changedFiles: execution.changedFiles,
+        });
+        persistLayeredLesson({
+          eventType: "attempt:failed",
+          taskId: failed.task.id,
+          attemptId: failed.attempt.id,
+          projectId: failed.task.projectId,
+          teamId: failed.task.teamId,
+          summary: executionSummary,
+          errorText: execution.errorText,
+          testOutcome: execution.testOutcome,
+          changedFiles: execution.changedFiles,
+          metadata: {
+            metrics: persistedMetrics,
+            commandOutcome: execution.commandOutcome ?? {},
+          },
         });
 
         if (failed.retryEligible) {

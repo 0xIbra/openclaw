@@ -21,7 +21,7 @@ describe("memory search config", () => {
     expect(resolved).toBeNull();
   });
 
-  it("defaults provider to auto when unspecified", () => {
+  it("defaults provider to openrouter when unspecified", () => {
     const cfg = {
       agents: {
         defaults: {
@@ -32,7 +32,8 @@ describe("memory search config", () => {
       },
     };
     const resolved = resolveMemorySearchConfig(cfg, "main");
-    expect(resolved?.provider).toBe("auto");
+    expect(resolved?.provider).toBe("openrouter");
+    expect(resolved?.model).toBe("qwen/qwen3-embedding-8b");
     expect(resolved?.fallback).toBe("none");
   });
 

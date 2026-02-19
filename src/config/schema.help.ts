@@ -148,7 +148,7 @@ export const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.experimental.sessionMemory":
     "Enable experimental session transcript indexing for memory search (default: false).",
   "agents.defaults.memorySearch.provider":
-    'Embedding provider ("openai", "gemini", "voyage", or "local").',
+    'Embedding provider ("openrouter", "openai", "openai-compatible", "gemini", "voyage", or "local").',
   "agents.defaults.memorySearch.remote.baseUrl":
     "Custom base URL for remote embeddings (OpenAI-compatible proxies or Gemini overrides).",
   "agents.defaults.memorySearch.remote.apiKey": "Custom API key for the remote embedding provider.",
@@ -167,7 +167,7 @@ export const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.local.modelPath":
     "Local GGUF model path or hf: URI (node-llama-cpp).",
   "agents.defaults.memorySearch.fallback":
-    'Fallback provider when embeddings fail ("openai", "gemini", "local", or "none").',
+    'Fallback provider when embeddings fail ("openrouter", "openai", "openai-compatible", "gemini", "voyage", "local", or "none").',
   "agents.defaults.memorySearch.store.path":
     "SQLite index path (default: ~/.openclaw/memory/{agentId}.sqlite).",
   "agents.defaults.memorySearch.store.vector.enabled":
@@ -184,43 +184,29 @@ export const FIELD_HELP: Record<string, string> = {
     "Multiplier for candidate pool size (default: 4).",
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
-  memory: "Memory backend configuration (global).",
-  "memory.backend": 'Memory backend ("builtin" for OpenClaw embeddings, "qmd" for QMD sidecar).',
-  "memory.citations": 'Default citation behavior ("auto", "on", or "off").',
-  "memory.qmd.command": "Path to the qmd binary (default: resolves from PATH).",
-  "memory.qmd.includeDefaultMemory":
-    "Whether to automatically index MEMORY.md + memory/**/*.md (default: true).",
-  "memory.qmd.paths":
-    "Additional directories/files to index with QMD (path + optional glob pattern).",
-  "memory.qmd.paths.path": "Absolute or ~-relative path to index via QMD.",
-  "memory.qmd.paths.pattern": "Glob pattern relative to the path root (default: **/*.md).",
-  "memory.qmd.paths.name":
-    "Optional stable name for the QMD collection (default derived from path).",
-  "memory.qmd.sessions.enabled":
-    "Enable QMD session transcript indexing (experimental, default: false).",
-  "memory.qmd.sessions.exportDir":
-    "Override directory for sanitized session exports before indexing.",
-  "memory.qmd.sessions.retentionDays":
-    "Retention window for exported sessions before pruning (default: unlimited).",
-  "memory.qmd.update.interval":
-    "How often the QMD sidecar refreshes indexes (duration string, default: 5m).",
-  "memory.qmd.update.debounceMs":
-    "Minimum delay between successive QMD refresh runs (default: 15000).",
-  "memory.qmd.update.onBoot": "Run QMD update once on gateway startup (default: true).",
-  "memory.qmd.update.waitForBootSync":
-    "Block startup until the boot QMD refresh finishes (default: false).",
-  "memory.qmd.update.embedInterval":
-    "How often QMD embeddings are refreshed (duration string, default: 60m). Set to 0 to disable periodic embed.",
-  "memory.qmd.update.commandTimeoutMs":
-    "Timeout for QMD maintenance commands like collection list/add (default: 30000).",
-  "memory.qmd.update.updateTimeoutMs": "Timeout for `qmd update` runs (default: 120000).",
-  "memory.qmd.update.embedTimeoutMs": "Timeout for `qmd embed` runs (default: 120000).",
-  "memory.qmd.limits.maxResults": "Max QMD results returned to the agent loop (default: 6).",
-  "memory.qmd.limits.maxSnippetChars": "Max characters per snippet pulled from QMD (default: 700).",
-  "memory.qmd.limits.maxInjectedChars": "Max total characters injected from QMD hits per turn.",
-  "memory.qmd.limits.timeoutMs": "Per-query timeout for QMD searches (default: 4000).",
-  "memory.qmd.scope":
-    "Session/channel scope for QMD recall (same syntax as session.sendPolicy; default: direct-only). Use match.rawKeyPrefix to match full agent-prefixed session keys.",
+  memory: "Layered memory configuration (global).",
+  "memory.layered": "Layered memory configuration for runtime task scopes (agent/project/team).",
+  "memory.layered.enabled": "Enable layered memory retrieval for task-runtime scoped sessions.",
+  "memory.layered.storage.root":
+    "Root directory for layered memory stores (default: ~/.openclaw/memory/layers).",
+  "memory.layered.weights.agent":
+    "Weight applied to agent-scope recall when merging layered results (default: 0.55).",
+  "memory.layered.weights.project":
+    "Weight applied to project-scope recall when merging layered results (default: 0.30).",
+  "memory.layered.weights.team":
+    "Weight applied to team-scope recall when merging layered results (default: 0.15).",
+  "memory.layered.scopes.agent.sensitive":
+    "Mark agent scope as sensitive and prefer local embeddings for that scope.",
+  "memory.layered.scopes.agent.providerOverride":
+    "Override embeddings provider for agent scope only.",
+  "memory.layered.scopes.project.sensitive":
+    "Mark project scope as sensitive and prefer local embeddings for that scope.",
+  "memory.layered.scopes.project.providerOverride":
+    "Override embeddings provider for project scope only.",
+  "memory.layered.scopes.team.sensitive":
+    "Mark team scope as sensitive and prefer local embeddings for that scope.",
+  "memory.layered.scopes.team.providerOverride":
+    "Override embeddings provider for team scope only.",
   "agents.defaults.memorySearch.cache.maxEntries":
     "Optional cap on cached embeddings (best-effort).",
   "agents.defaults.memorySearch.sync.onSearch":

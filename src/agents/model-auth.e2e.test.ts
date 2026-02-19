@@ -477,4 +477,28 @@ describe("getApiKeyForModel", () => {
       }
     }
   });
+
+  it("resolveEnvApiKey('openai-compatible') prefers OPENAI_COMPATIBLE_API_KEY", async () => {
+    const prevCompat = process.env.OPENAI_COMPATIBLE_API_KEY;
+    const prevOpenAi = process.env.OPENAI_API_KEY;
+    try {
+      process.env.OPENAI_COMPATIBLE_API_KEY = "compat-key";
+      process.env.OPENAI_API_KEY = "openai-key";
+
+      const resolved = resolveEnvApiKey("openai-compatible");
+      expect(resolved?.apiKey).toBe("compat-key");
+      expect(resolved?.source).toContain("OPENAI_COMPATIBLE_API_KEY");
+    } finally {
+      if (prevCompat === undefined) {
+        delete process.env.OPENAI_COMPATIBLE_API_KEY;
+      } else {
+        process.env.OPENAI_COMPATIBLE_API_KEY = prevCompat;
+      }
+      if (prevOpenAi === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = prevOpenAi;
+      }
+    }
+  });
 });

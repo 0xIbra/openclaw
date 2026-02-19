@@ -8,6 +8,8 @@ export type MemorySearchResult = {
   snippet: string;
   source: MemorySource;
   citation?: string;
+  scopeKind?: "agent" | "project" | "team";
+  scopeId?: string;
 };
 
 export type MemoryEmbeddingProbeResult = {

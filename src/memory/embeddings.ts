@@ -5,6 +5,10 @@ import { formatErrorMessage } from "../infra/errors.js";
 import { resolveUserPath } from "../utils.js";
 import { createGeminiEmbeddingProvider, type GeminiEmbeddingClient } from "./embeddings-gemini.js";
 import { createOpenAiEmbeddingProvider, type OpenAiEmbeddingClient } from "./embeddings-openai.js";
+import {
+  createOpenRouterEmbeddingProvider,
+  type OpenRouterEmbeddingClient,
+} from "./embeddings-openrouter.js";
 import { createVoyageEmbeddingProvider, type VoyageEmbeddingClient } from "./embeddings-voyage.js";
 import { importNodeLlamaCpp } from "./node-llama.js";
 
@@ -19,6 +23,7 @@ function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
 
 export type { GeminiEmbeddingClient } from "./embeddings-gemini.js";
 export type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
+export type { OpenRouterEmbeddingClient } from "./embeddings-openrouter.js";
 export type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
 
 export type EmbeddingProvider = {
@@ -29,11 +34,17 @@ export type EmbeddingProvider = {
   embedBatch: (texts: string[]) => Promise<number[][]>;
 };
 
-export type EmbeddingProviderId = "openai" | "local" | "gemini" | "voyage";
+export type EmbeddingProviderId =
+  | "openai"
+  | "openai-compatible"
+  | "local"
+  | "gemini"
+  | "voyage"
+  | "openrouter";
 export type EmbeddingProviderRequest = EmbeddingProviderId | "auto";
 export type EmbeddingProviderFallback = EmbeddingProviderId | "none";
 
-const REMOTE_EMBEDDING_PROVIDER_IDS = ["openai", "gemini", "voyage"] as const;
+const REMOTE_EMBEDDING_PROVIDER_IDS = ["openrouter", "openai", "gemini", "voyage"] as const;
 
 export type EmbeddingProviderResult = {
   provider: EmbeddingProvider;
@@ -41,6 +52,7 @@ export type EmbeddingProviderResult = {
   fallbackFrom?: EmbeddingProviderId;
   fallbackReason?: string;
   openAi?: OpenAiEmbeddingClient;
+  openRouter?: OpenRouterEmbeddingClient;
   gemini?: GeminiEmbeddingClient;
   voyage?: VoyageEmbeddingClient;
 };
@@ -153,7 +165,15 @@ export async function createEmbeddingProvider(
       const { provider, client } = await createVoyageEmbeddingProvider(options);
       return { provider, voyage: client };
     }
-    const { provider, client } = await createOpenAiEmbeddingProvider(options);
+    if (id === "openrouter") {
+      const { provider, client } = await createOpenRouterEmbeddingProvider(options);
+      return { provider, openRouter: client };
+    }
+    if (id === "openai-compatible") {
+      const { provider, client } = await createOpenAiEmbeddingProvider(options, id);
+      return { provider, openAi: client };
+    }
+    const { provider, client } = await createOpenAiEmbeddingProvider(options, "openai");
     return { provider, openAi: client };
   };
 

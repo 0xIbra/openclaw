@@ -15,6 +15,28 @@ import {
 
 export const LEGACY_CONFIG_MIGRATIONS_PART_3: LegacyConfigMigration[] = [
   {
+    id: "memory.qmd-removed",
+    describe: "Remove deprecated top-level memory backend settings",
+    apply: (raw, changes) => {
+      const memory = getRecord(raw.memory);
+      if (!memory) {
+        return;
+      }
+      const hasLegacyMemoryKeys =
+        memory.backend !== undefined || memory.citations !== undefined || memory.qmd !== undefined;
+      if (!hasLegacyMemoryKeys) {
+        return;
+      }
+      delete memory.backend;
+      delete memory.citations;
+      delete memory.qmd;
+      raw.memory = memory;
+      changes.push(
+        "Removed memory.backend/memory.citations/memory.qmd (layered memory is now the only top-level memory config).",
+      );
+    },
+  },
+  {
     id: "memorySearch->agents.defaults.memorySearch",
     describe: "Move top-level memorySearch to agents.defaults.memorySearch",
     apply: (raw, changes) => {

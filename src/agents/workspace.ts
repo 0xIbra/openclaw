@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import { runCommandWithTimeout } from "../process/exec.js";
-import { isCronSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
+import {
+  DEFAULT_AGENT_ID,
+  isCronSessionKey,
+  isSubagentSessionKey,
+} from "../routing/session-key.js";
 import { resolveUserPath } from "../utils.js";
 import { resolveWorkspaceTemplateDir } from "./workspace-templates.js";
 
@@ -32,9 +36,117 @@ export const DEFAULT_MEMORY_ALT_FILENAME = "memory.md";
 const WORKSPACE_STATE_DIRNAME = ".openclaw";
 const WORKSPACE_STATE_FILENAME = "workspace-state.json";
 const WORKSPACE_STATE_VERSION = 1;
+const DEFAULT_MAIN_AGENT_NAME = "Ares";
+const DEFAULT_MAIN_AGENT_ROLE = "master-control";
+const DEFAULT_MAIN_AGENT_VIBE =
+  "calm, tactical, direct; decomposes work clearly, delegates with intent, and protects quality";
+const DEFAULT_MAIN_AGENT_THEME = `${DEFAULT_MAIN_AGENT_ROLE} · ${DEFAULT_MAIN_AGENT_VIBE}`;
+const DEFAULT_MAIN_AGENT_EMOJI = "🛡️";
+const IDENTITY_TEMPLATE_MARKERS = [
+  "fill this in during your first conversation",
+  "pick something you like",
+  "your signature - pick one that feels right",
+];
+const IDENTITY_PLACEHOLDER_VALUES = new Set([
+  "pick something you like",
+  "ai? robot? familiar? ghost in the machine? something weirder?",
+  "how do you come across? sharp? warm? chaotic? calm?",
+  "your signature - pick one that feels right",
+  "workspace-relative path, http(s) url, or data uri",
+]);
 
 const workspaceTemplateCache = new Map<string, Promise<string>>();
 let gitAvailabilityPromise: Promise<boolean> | null = null;
+
+function buildDefaultMainIdentityMarkdown(): string {
+  return [
+    "# IDENTITY.md - Agent Identity",
+    "",
+    `- Name: ${DEFAULT_MAIN_AGENT_NAME}`,
+    "- Creature: strategic guardian",
+    `- Vibe: ${DEFAULT_MAIN_AGENT_VIBE}`,
+    `- Theme: ${DEFAULT_MAIN_AGENT_THEME}`,
+    `- Emoji: ${DEFAULT_MAIN_AGENT_EMOJI}`,
+    "",
+  ].join("\n");
+}
+
+function normalizeIdentityValue(value: string): string {
+  let normalized = value.trim();
+  normalized = normalized.replace(/^[*_]+|[*_]+$/g, "").trim();
+  if (normalized.startsWith("(") && normalized.endsWith(")")) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+  normalized = normalized.replace(/[\u2013\u2014]/g, "-");
+  normalized = normalized.replace(/\s+/g, " ").toLowerCase();
+  return normalized;
+}
+
+function isIdentityPlaceholder(value: string): boolean {
+  return IDENTITY_PLACEHOLDER_VALUES.has(normalizeIdentityValue(value));
+}
+
+function parseIdentityFieldValues(content: string): string[] {
+  const out: string[] = [];
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const cleaned = line.trim().replace(/^\s*-\s*/, "");
+    const colonIndex = cleaned.indexOf(":");
+    if (colonIndex === -1) {
+      continue;
+    }
+    const label = cleaned.slice(0, colonIndex).replace(/[*_]/g, "").trim().toLowerCase();
+    if (!["name", "theme", "emoji", "creature", "vibe", "avatar"].includes(label)) {
+      continue;
+    }
+    const value = cleaned
+      .slice(colonIndex + 1)
+      .replace(/^[*_]+|[*_]+$/g, "")
+      .trim();
+    if (!value || isIdentityPlaceholder(value)) {
+      continue;
+    }
+    out.push(value);
+  }
+  return out;
+}
+
+function shouldBackfillMainIdentity(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return true;
+  }
+  const values = parseIdentityFieldValues(trimmed);
+  if (values.length > 0) {
+    return false;
+  }
+  const normalized = normalizeIdentityValue(trimmed);
+  return IDENTITY_TEMPLATE_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+async function ensureMainIdentityDefaults(params: {
+  agentId?: string;
+  identityPath: string;
+}): Promise<void> {
+  const agentId = params.agentId?.trim().toLowerCase();
+  if (!agentId || agentId !== DEFAULT_AGENT_ID) {
+    return;
+  }
+  const seeded = buildDefaultMainIdentityMarkdown();
+  try {
+    const content = await fs.readFile(params.identityPath, "utf-8");
+    if (!shouldBackfillMainIdentity(content)) {
+      return;
+    }
+    await fs.writeFile(params.identityPath, seeded, { encoding: "utf-8" });
+  } catch (err) {
+    const anyErr = err as { code?: string };
+    if (anyErr.code !== "ENOENT") {
+      throw err;
+    }
+    await writeFileIfMissing(params.identityPath, seeded);
+  }
+}
 
 function stripFrontMatter(content: string): string {
   if (!content.startsWith("---")) {
@@ -258,6 +370,7 @@ async function ensureGitRepo(dir: string, isBrandNewWorkspace: boolean) {
 export async function ensureAgentWorkspace(params?: {
   dir?: string;
   ensureBootstrapFiles?: boolean;
+  agentId?: string;
 }): Promise<{
   dir: string;
   agentsPath?: string;
@@ -312,6 +425,7 @@ export async function ensureAgentWorkspace(params?: {
   await writeFileIfMissing(identityPath, identityTemplate);
   await writeFileIfMissing(userPath, userTemplate);
   await writeFileIfMissing(heartbeatPath, heartbeatTemplate);
+  await ensureMainIdentityDefaults({ agentId: params?.agentId, identityPath });
 
   let state = await readWorkspaceOnboardingState(statePath);
   let stateDirty = false;

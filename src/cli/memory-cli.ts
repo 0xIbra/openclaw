@@ -8,12 +8,18 @@ import { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { setVerbose } from "../globals.js";
-import { getMemorySearchManager, type MemorySearchManagerResult } from "../memory/index.js";
+import {
+  getLayeredMemorySearchMetrics,
+  getLayeredMemoryWritebackMetrics,
+  getMemorySearchManager,
+  syncLayeredMemoryScope,
+  type MemorySearchManagerResult,
+} from "../memory/index.js";
 import { listMemoryFiles, normalizeExtraMemoryPaths } from "../memory/internal.js";
 import { defaultRuntime } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { colorize, isRich, theme } from "../terminal/theme.js";
-import { shortenHomeInString, shortenHomePath } from "../utils.js";
+import { resolveUserPath, shortenHomeInString, shortenHomePath } from "../utils.js";
 import { formatErrorMessage, withManager } from "./cli-utils.js";
 import { formatHelpExamples } from "./help-format.js";
 import { withProgress, withProgressTotals } from "./progress.js";
@@ -24,6 +30,8 @@ type MemoryCommandOptions = {
   deep?: boolean;
   index?: boolean;
   force?: boolean;
+  scopeKind?: string;
+  scopeId?: string;
   verbose?: boolean;
 };
 
@@ -40,6 +48,19 @@ type SourceScan = {
 type MemorySourceScan = {
   sources: SourceScan[];
   totalFiles: number | null;
+  issues: string[];
+};
+
+type LayeredScopeStatus = {
+  kind: "agent" | "project" | "team";
+  id: string;
+  entries: number;
+};
+
+type LayeredMemoryStatus = {
+  enabled: boolean;
+  root: string;
+  scopes: LayeredScopeStatus[];
   issues: string[];
 };
 
@@ -269,16 +290,87 @@ async function scanMemorySources(params: {
   return { sources: scans, totalFiles, issues };
 }
 
+async function countMarkdownFiles(dir: string): Promise<number> {
+  let total = 0;
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      total += await countMarkdownFiles(full);
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+async function scanLayeredMemoryStatus(
+  cfg: ReturnType<typeof loadConfig>,
+): Promise<LayeredMemoryStatus> {
+  const enabled = cfg.memory?.layered?.enabled ?? true;
+  const root = cfg.memory?.layered?.storage?.root?.trim()
+    ? shortenHomePath(cfg.memory.layered.storage.root)
+    : shortenHomePath(path.join(resolveStateDir(process.env, os.homedir), "memory", "layers"));
+  if (!enabled) {
+    return { enabled, root, scopes: [], issues: [] };
+  }
+  const resolvedRoot = cfg.memory?.layered?.storage?.root?.trim()
+    ? resolveUserPath(cfg.memory.layered.storage.root)
+    : path.join(resolveStateDir(process.env, os.homedir), "memory", "layers");
+  const issues: string[] = [];
+  const scopes: LayeredScopeStatus[] = [];
+  for (const kind of ["agent", "project", "team"] as const) {
+    const kindDir = path.join(resolvedRoot, kind);
+    try {
+      const entries = await fs.readdir(kindDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) {
+          continue;
+        }
+        const scopeDir = path.join(kindDir, entry.name, "memory", "entries");
+        let count = 0;
+        try {
+          count = await countMarkdownFiles(scopeDir);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code !== "ENOENT") {
+            issues.push(`layered scope scan failed (${kind}/${entry.name}): ${code ?? "error"}`);
+          }
+        }
+        scopes.push({ kind, id: entry.name, entries: count });
+      }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        issues.push(`layered root scan failed (${kind}): ${code ?? "error"}`);
+      }
+    }
+  }
+  return { enabled, root: shortenHomePath(resolvedRoot), scopes, issues };
+}
+
 export async function runMemoryStatus(opts: MemoryCommandOptions) {
   setVerbose(Boolean(opts.verbose));
   const cfg = loadConfig();
   const agentIds = resolveAgentIds(cfg, opts.agent);
+  const layeredStatus = await scanLayeredMemoryStatus(cfg);
+  const layeredMetrics = {
+    search: getLayeredMemorySearchMetrics(),
+    writeback: getLayeredMemoryWritebackMetrics(),
+  };
   const allResults: Array<{
     agentId: string;
     status: ReturnType<MemoryManager["status"]>;
     embeddingProbe?: Awaited<ReturnType<MemoryManager["probeEmbeddingAvailability"]>>;
     indexError?: string;
     scan?: MemorySourceScan;
+    layered?: LayeredMemoryStatus;
+    layeredMetrics?: typeof layeredMetrics;
   }> = [];
 
   for (const agentId of agentIds) {
@@ -356,7 +448,15 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
               extraPaths: status.extraPaths,
             })
           : undefined;
-        allResults.push({ agentId, status, embeddingProbe, indexError, scan });
+        allResults.push({
+          agentId,
+          status,
+          embeddingProbe,
+          indexError,
+          scan,
+          layered: layeredStatus,
+          layeredMetrics,
+        });
       },
     });
   }
@@ -508,6 +608,37 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
         lines.push(`  ${warn(issue)}`);
       }
     }
+    if (layeredStatus.enabled) {
+      lines.push(`${label("Layered root")} ${info(layeredStatus.root)}`);
+      if (layeredStatus.scopes.length > 0) {
+        lines.push(label("Layered scopes"));
+        for (const scope of layeredStatus.scopes) {
+          lines.push(
+            `  ${accent(`${scope.kind}/${scope.id}`)} ${muted("·")} ${muted(`${scope.entries} entries`)}`,
+          );
+        }
+      } else {
+        lines.push(`${label("Layered scopes")} ${muted("none")}`);
+      }
+      if (layeredStatus.issues.length > 0) {
+        lines.push(label("Layered issues"));
+        for (const issue of layeredStatus.issues) {
+          lines.push(`  ${warn(issue)}`);
+        }
+      }
+      lines.push(
+        `${label("Layered search metrics")} ${muted(
+          `searches ${result.layeredMetrics?.search.searches ?? 0} · hits ${result.layeredMetrics?.search.results ?? 0} · failures ${result.layeredMetrics?.search.failures ?? 0}`,
+        )}`,
+      );
+      lines.push(
+        `${label("Layered writeback metrics")} ${muted(
+          `events ${result.layeredMetrics?.writeback.events ?? 0} · writes ${result.layeredMetrics?.writeback.writes ?? 0} · failures ${result.layeredMetrics?.writeback.failures ?? 0}`,
+        )}`,
+      );
+    } else {
+      lines.push(`${label("Layered")} ${muted("disabled")}`);
+    }
     defaultRuntime.log(lines.join("\n"));
     defaultRuntime.log("");
   }
@@ -523,6 +654,10 @@ export function registerMemoryCli(program: Command) {
         `\n${theme.heading("Examples:")}\n${formatHelpExamples([
           ["openclaw memory status", "Show index and provider status."],
           ["openclaw memory index --force", "Force a full reindex."],
+          [
+            "openclaw memory index-scope --scope-kind project --scope-id proj-1 --force",
+            "Force reindex for one layered scope.",
+          ],
           ['openclaw memory search --query "deployment notes"', "Search indexed memory entries."],
           ["openclaw memory status --json", "Output machine-readable JSON."],
         ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/memory", "docs.openclaw.ai/cli/memory")}\n`,
@@ -679,6 +814,48 @@ export function registerMemoryCli(program: Command) {
             }
           },
         });
+      }
+    });
+
+  memory
+    .command("index-scope")
+    .description("Reindex one layered memory scope")
+    .option("--scope-kind <kind>", "Scope kind: agent, project, or team")
+    .option("--scope-id <id>", "Layered scope id")
+    .option("--force", "Force full reindex", false)
+    .option("--verbose", "Verbose logging", false)
+    .action(async (opts: MemoryCommandOptions) => {
+      setVerbose(Boolean(opts.verbose));
+      const cfg = loadConfig();
+      const scopeKindRaw = opts.scopeKind?.trim().toLowerCase();
+      const scopeId = opts.scopeId?.trim();
+      if (scopeKindRaw !== "agent" && scopeKindRaw !== "project" && scopeKindRaw !== "team") {
+        defaultRuntime.error("Invalid --scope-kind. Use one of: agent, project, team.");
+        process.exitCode = 1;
+        return;
+      }
+      if (!scopeId) {
+        defaultRuntime.error("Missing --scope-id.");
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        const result = await syncLayeredMemoryScope({
+          cfg,
+          scopeKind: scopeKindRaw,
+          scopeId,
+          force: Boolean(opts.force),
+          reason: "cli-layered-scope",
+        });
+        defaultRuntime.log(
+          `Layered scope index updated (${result.scopeKind}/${result.scopeId}) using ${result.provider}:${result.model ?? result.provider}.`,
+        );
+        if (typeof result.files === "number" && typeof result.chunks === "number") {
+          defaultRuntime.log(`Indexed ${result.files} files and ${result.chunks} chunks.`);
+        }
+      } catch (err) {
+        defaultRuntime.error(`Layered scope index failed: ${formatErrorMessage(err)}`);
+        process.exitCode = 1;
       }
     });
 

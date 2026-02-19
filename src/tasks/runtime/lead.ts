@@ -1,6 +1,7 @@
 import type { TaskLead, TaskLeadEvent, TaskLeadOptions, TaskLeadStatus } from "./types.js";
 import { markSubagentRunTerminated, registerSubagentRun } from "../../agents/subagent-registry.js";
 import { resolveAgentMainSessionKey } from "../../config/sessions.js";
+import { writeLayeredMemoryEntry } from "../../memory/layered-writeback.js";
 import {
   TASK_LEAD_MESSAGE_VISIBILITY_TIMEOUT_MS,
   TASK_LEAD_POLL_MS,
@@ -207,10 +208,36 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
           (message.messageType === "answer" || message.messageType === "context:provide") &&
           payloadThreadId
         ) {
-          options.taskService.markQuestionAnswered({
+          const answered = options.taskService.markQuestionAnswered({
             threadId: payloadThreadId,
             answerMessageId: message.id,
           });
+          if (options.config && answered.taskId) {
+            const task = options.taskService.getTask(answered.taskId);
+            if (task) {
+              void writeLayeredMemoryEntry({
+                cfg: options.config,
+                scopeRef: {
+                  agentId: options.leadAgentId,
+                  projectId: task.projectId,
+                  teamId: task.teamId,
+                },
+                entry: {
+                  eventType: "question:resolved",
+                  taskId: task.id,
+                  summary: message.body,
+                  metadata: {
+                    threadId: answered.id,
+                    requesterAgentId: answered.requesterAgentId,
+                    leadAgentId: options.leadAgentId,
+                    answerMessageId: message.id,
+                  },
+                },
+              }).catch(() => {
+                // layered writeback is best-effort
+              });
+            }
+          }
         } else if (
           message.messageType === "task:complete" ||
           message.messageType === "task:failed"

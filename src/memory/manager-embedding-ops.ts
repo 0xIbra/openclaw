@@ -203,14 +203,17 @@ class MemoryManagerEmbeddingOps {
   }
 
   private computeProviderKey(): string {
-    if (this.provider.id === "openai" && this.openAi) {
+    if (
+      (this.provider.id === "openai" || this.provider.id === "openai-compatible") &&
+      this.openAi
+    ) {
       const entries = Object.entries(this.openAi.headers)
         .filter(([key]) => key.toLowerCase() !== "authorization")
         .toSorted(([a], [b]) => a.localeCompare(b))
         .map(([key, value]) => [key, value]);
       return hashText(
         JSON.stringify({
-          provider: "openai",
+          provider: this.provider.id,
           baseUrl: this.openAi.baseUrl,
           model: this.openAi.model,
           headers: entries,
@@ -234,6 +237,20 @@ class MemoryManagerEmbeddingOps {
         }),
       );
     }
+    if (this.provider.id === "openrouter" && this.openRouter) {
+      const entries = Object.entries(this.openRouter.headers)
+        .filter(([key]) => key.toLowerCase() !== "authorization")
+        .toSorted(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => [key, value]);
+      return hashText(
+        JSON.stringify({
+          provider: "openrouter",
+          baseUrl: this.openRouter.baseUrl,
+          model: this.openRouter.model,
+          headers: entries,
+        }),
+      );
+    }
     return hashText(JSON.stringify({ provider: this.provider.id, model: this.provider.model }));
   }
 
@@ -242,7 +259,10 @@ class MemoryManagerEmbeddingOps {
     entry: MemoryFileEntry | SessionFileEntry,
     source: MemorySource,
   ): Promise<number[][]> {
-    if (this.provider.id === "openai" && this.openAi) {
+    if (
+      (this.provider.id === "openai" || this.provider.id === "openai-compatible") &&
+      this.openAi
+    ) {
       return this.embedChunksWithOpenAiBatch(chunks, entry, source);
     }
     if (this.provider.id === "gemini" && this.gemini) {

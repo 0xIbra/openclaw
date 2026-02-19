@@ -16,6 +16,7 @@ import { isSafeExecutableValue } from "../infra/exec-safety.js";
 import { pickPrimaryTailnetIPv4 } from "../infra/tailnet.js";
 import { isWSL } from "../infra/wsl.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import { DEFAULT_AGENT_ID } from "../routing/session-key.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
 import {
   CONFIG_DIR,
@@ -292,6 +293,7 @@ export async function ensureWorkspaceAndSessions(
   const ws = await ensureAgentWorkspace({
     dir: workspaceDir,
     ensureBootstrapFiles: !options?.skipBootstrap,
+    agentId: options?.agentId ?? DEFAULT_AGENT_ID,
   });
   runtime.log(`Workspace OK: ${shortenHomePath(ws.dir)}`);
   const sessionsDir = resolveSessionTranscriptsDirForAgent(options?.agentId);

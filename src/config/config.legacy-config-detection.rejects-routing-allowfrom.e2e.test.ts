@@ -207,6 +207,23 @@ describe("legacy config detection", () => {
     });
     expect((res.config as { memorySearch?: unknown }).memorySearch).toBeUndefined();
   });
+  it("removes deprecated top-level memory backend settings", async () => {
+    const res = migrateLegacyConfig({
+      memory: {
+        backend: "qmd",
+        citations: "off",
+        qmd: { limits: { maxResults: 2 } },
+        layered: { enabled: true },
+      },
+    });
+    expect(res.changes).toContain(
+      "Removed memory.backend/memory.citations/memory.qmd (layered memory is now the only top-level memory config).",
+    );
+    expect(res.config?.memory?.layered?.enabled).toBe(true);
+    expect((res.config?.memory as { backend?: unknown } | undefined)?.backend).toBeUndefined();
+    expect((res.config?.memory as { citations?: unknown } | undefined)?.citations).toBeUndefined();
+    expect((res.config?.memory as { qmd?: unknown } | undefined)?.qmd).toBeUndefined();
+  });
   it("merges top-level memorySearch into agents.defaults.memorySearch", async () => {
     const res = migrateLegacyConfig({
       memorySearch: {

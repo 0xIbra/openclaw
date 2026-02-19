@@ -21,6 +21,7 @@ import {
   type EmbeddingProviderResult,
   type GeminiEmbeddingClient,
   type OpenAiEmbeddingClient,
+  type OpenRouterEmbeddingClient,
   type VoyageEmbeddingClient,
 } from "./embeddings.js";
 import { bm25RankToScore, buildFtsQuery, mergeHybridResults } from "./hybrid.js";
@@ -47,10 +48,24 @@ export class MemoryIndexManager implements MemorySearchManager {
   private readonly workspaceDir: string;
   private readonly settings: ResolvedMemorySearchConfig;
   private provider: EmbeddingProvider;
-  private readonly requestedProvider: "openai" | "local" | "gemini" | "voyage" | "auto";
-  private fallbackFrom?: "openai" | "local" | "gemini" | "voyage";
+  private readonly requestedProvider:
+    | "openai"
+    | "openai-compatible"
+    | "local"
+    | "gemini"
+    | "voyage"
+    | "openrouter"
+    | "auto";
+  private fallbackFrom?:
+    | "openai"
+    | "openai-compatible"
+    | "local"
+    | "gemini"
+    | "voyage"
+    | "openrouter";
   private fallbackReason?: string;
   private openAi?: OpenAiEmbeddingClient;
+  private openRouter?: OpenRouterEmbeddingClient;
   private gemini?: GeminiEmbeddingClient;
   private voyage?: VoyageEmbeddingClient;
   private batch: {
@@ -155,6 +170,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.fallbackFrom = params.providerResult.fallbackFrom;
     this.fallbackReason = params.providerResult.fallbackReason;
     this.openAi = params.providerResult.openAi;
+    this.openRouter = params.providerResult.openRouter;
     this.gemini = params.providerResult.gemini;
     this.voyage = params.providerResult.voyage;
     this.sources = new Set(params.settings.sources);

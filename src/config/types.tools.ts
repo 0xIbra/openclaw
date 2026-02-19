@@ -256,7 +256,7 @@ export type MemorySearchConfig = {
     sessionMemory?: boolean;
   };
   /** Embedding provider mode. */
-  provider?: "openai" | "gemini" | "local" | "voyage";
+  provider?: "openai" | "openai-compatible" | "gemini" | "local" | "voyage" | "openrouter";
   remote?: {
     baseUrl?: string;
     apiKey?: string;
@@ -275,7 +275,7 @@ export type MemorySearchConfig = {
     };
   };
   /** Fallback behavior when embeddings fail. */
-  fallback?: "openai" | "gemini" | "local" | "voyage" | "none";
+  fallback?: "openai" | "openai-compatible" | "gemini" | "local" | "voyage" | "openrouter" | "none";
   /** Embedding model id (remote) or alias (local). */
   model?: string;
   /** Local embedding settings (node-llama-cpp). */

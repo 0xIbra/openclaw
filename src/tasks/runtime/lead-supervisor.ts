@@ -65,6 +65,7 @@ export function createTaskLeadSupervisor(options: TaskLeadSupervisorOptions): Ta
       }
       const lead = createLead({
         taskService: options.taskService,
+        config: options.config,
         teamId: binding.teamId,
         teamName: binding.teamName,
         leadAgentId: binding.leadAgentId,

@@ -5,8 +5,15 @@ import type { MemorySearchResult } from "../../memory/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { resolveMemoryBackendConfig } from "../../memory/backend-config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
+import {
+  readLayeredMemoryFile,
+  resolveLayeredMemoryEnabled,
+  resolveLayeredScopes,
+  searchLayeredMemory,
+} from "../../memory/layered-manager.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { scrubText } from "../../secrets/scrub-middleware.js";
+import { parseTaskRuntimeMemoryContext } from "../../tasks/memory-context.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -61,25 +68,54 @@ export function createMemorySearchTool(options: {
         cfg,
         agentId,
       });
-      if (!manager) {
-        return jsonResult({ results: [], disabled: true, error });
-      }
       try {
         const citationsMode = resolveMemoryCitationsMode(cfg);
         const includeCitations = shouldIncludeCitations({
           mode: citationsMode,
           sessionKey: options.agentSessionKey,
         });
-        const rawResults = await manager.search(query, {
-          maxResults,
-          minScore,
-          sessionKey: options.agentSessionKey,
-        });
-        const status = manager.status();
+        const runtimeContext = parseTaskRuntimeMemoryContext(options.agentSessionKey);
+        const useLayered = Boolean(runtimeContext && resolveLayeredMemoryEnabled(cfg));
+        let rawResults: MemorySearchResult[] = [];
+        let provider = "builtin";
+        let model: string | undefined;
+        let fallback: unknown = undefined;
+        if (useLayered && runtimeContext) {
+          const scopes = resolveLayeredScopes({
+            cfg,
+            agentId,
+            projectId: runtimeContext.projectId,
+            teamId: runtimeContext.teamId,
+          });
+          rawResults = await searchLayeredMemory({
+            cfg,
+            agentId,
+            query,
+            scopes,
+            maxResults,
+            minScore,
+            sessionKey: options.agentSessionKey,
+          });
+          provider = "layered";
+          model = "weighted-rank";
+        } else {
+          if (!manager) {
+            return jsonResult({ results: [], disabled: true, error });
+          }
+          rawResults = await manager.search(query, {
+            maxResults,
+            minScore,
+            sessionKey: options.agentSessionKey,
+          });
+          const status = manager.status();
+          provider = status.provider;
+          model = status.model;
+          fallback = status.fallback;
+        }
         const decorated = decorateCitations(rawResults, includeCitations);
         const resolved = resolveMemoryBackendConfig({ cfg, agentId });
         const results =
-          status.backend === "qmd"
+          resolved.backend === "qmd" && !useLayered
             ? clampResultsByInjectedChars(decorated, resolved.qmd?.limits.maxInjectedChars)
             : decorated;
         const scrubbedResults = results.map((entry) => ({
@@ -88,10 +124,11 @@ export function createMemorySearchTool(options: {
         }));
         return jsonResult({
           results: scrubbedResults,
-          provider: status.provider,
-          model: status.model,
-          fallback: status.fallback,
+          provider,
+          model,
+          fallback,
           citations: citationsMode,
+          layered: useLayered,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -120,6 +157,18 @@ export function createMemoryGetTool(options: {
       const relPath = readStringParam(params, "path", { required: true });
       const from = readNumberParam(params, "from", { integer: true });
       const lines = readNumberParam(params, "lines", { integer: true });
+      const layeredResult = await readLayeredMemoryFile({
+        cfg,
+        layeredPath: relPath,
+        from: from ?? undefined,
+        lines: lines ?? undefined,
+      });
+      if (layeredResult) {
+        return jsonResult({
+          ...layeredResult,
+          text: scrubText(layeredResult.text ?? "", { context: "memory" }),
+        });
+      }
       const { manager, error } = await getMemorySearchManager({
         cfg,
         agentId,

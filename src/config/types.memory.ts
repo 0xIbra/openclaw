@@ -3,11 +3,42 @@ import type { SessionSendPolicyConfig } from "./types.base.js";
 export type MemoryBackend = "builtin" | "qmd";
 export type MemoryCitationsMode = "auto" | "on" | "off";
 export type MemoryQmdSearchMode = "query" | "search" | "vsearch";
+export type LayeredMemoryScopeKind = "agent" | "project" | "team";
+export type LayeredMemoryProvider =
+  | "openrouter"
+  | "openai"
+  | "openai-compatible"
+  | "gemini"
+  | "voyage"
+  | "local";
+
+export type LayeredMemoryScopeConfig = {
+  sensitive?: boolean;
+  providerOverride?: LayeredMemoryProvider;
+};
+
+export type LayeredMemoryConfig = {
+  enabled?: boolean;
+  storage?: {
+    root?: string;
+  };
+  weights?: {
+    agent?: number;
+    project?: number;
+    team?: number;
+  };
+  scopes?: {
+    agent?: LayeredMemoryScopeConfig;
+    project?: LayeredMemoryScopeConfig;
+    team?: LayeredMemoryScopeConfig;
+  };
+};
 
 export type MemoryConfig = {
   backend?: MemoryBackend;
   citations?: MemoryCitationsMode;
   qmd?: MemoryQmdConfig;
+  layered?: LayeredMemoryConfig;
 };
 
 export type MemoryQmdConfig = {

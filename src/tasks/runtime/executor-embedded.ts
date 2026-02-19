@@ -8,6 +8,7 @@ import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionTranscriptPath } from "../../config/sessions.js";
 import { buildAgentMainSessionKey } from "../../routing/session-key.js";
+import { appendTaskRuntimeMemoryContext } from "../memory-context.js";
 import { TASK_WORKER_EXECUTION_TIMEOUT_MS } from "./defaults.js";
 import { buildExecutionResultFromOutput } from "./executor.js";
 
@@ -74,9 +75,14 @@ export function createEmbeddedTaskExecutor(options: EmbeddedTaskExecutorOptions)
       const sessionFile = resolveSessionTranscriptPath(sessionId, options.agentId);
       await fs.mkdir(path.dirname(sessionFile), { recursive: true });
       const workspaceDir = resolveAgentWorkspaceDir(config, options.agentId);
-      const sessionKey = buildAgentMainSessionKey({
-        agentId: options.agentId,
-        mainKey: "task-runtime",
+      const sessionKey = appendTaskRuntimeMemoryContext({
+        sessionKey: buildAgentMainSessionKey({
+          agentId: options.agentId,
+          mainKey: "task-runtime",
+        }),
+        projectId: input.task.projectId,
+        teamId: input.task.teamId,
+        taskId: input.task.id,
       });
       const runId = `task-runtime:${options.agentId}:${input.task.id}:${input.attempt.id}`;
       try {

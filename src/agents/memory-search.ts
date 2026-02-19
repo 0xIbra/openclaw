@@ -9,7 +9,7 @@ export type ResolvedMemorySearchConfig = {
   enabled: boolean;
   sources: Array<"memory" | "sessions">;
   extraPaths: string[];
-  provider: "openai" | "local" | "gemini" | "voyage" | "auto";
+  provider: "openai" | "openai-compatible" | "local" | "gemini" | "voyage" | "openrouter" | "auto";
   remote?: {
     baseUrl?: string;
     apiKey?: string;
@@ -25,7 +25,7 @@ export type ResolvedMemorySearchConfig = {
   experimental: {
     sessionMemory: boolean;
   };
-  fallback: "openai" | "gemini" | "local" | "voyage" | "none";
+  fallback: "openai" | "openai-compatible" | "gemini" | "local" | "voyage" | "openrouter" | "none";
   model: string;
   local: {
     modelPath?: string;
@@ -71,6 +71,7 @@ export type ResolvedMemorySearchConfig = {
 };
 
 const DEFAULT_OPENAI_MODEL = "text-embedding-3-small";
+const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3-embedding-8b";
 const DEFAULT_GEMINI_MODEL = "gemini-embedding-001";
 const DEFAULT_VOYAGE_MODEL = "voyage-4-large";
 const DEFAULT_CHUNK_TOKENS = 400;
@@ -125,7 +126,9 @@ function mergeConfig(
   const enabled = overrides?.enabled ?? defaults?.enabled ?? true;
   const sessionMemory =
     overrides?.experimental?.sessionMemory ?? defaults?.experimental?.sessionMemory ?? false;
-  const provider = overrides?.provider ?? defaults?.provider ?? "auto";
+  const provider = (overrides?.provider ??
+    defaults?.provider ??
+    "openrouter") as ResolvedMemorySearchConfig["provider"];
   const defaultRemote = defaults?.remote;
   const overrideRemote = overrides?.remote;
   const hasRemoteConfig = Boolean(
@@ -138,7 +141,9 @@ function mergeConfig(
   );
   const includeRemote =
     hasRemoteConfig ||
+    provider === "openrouter" ||
     provider === "openai" ||
+    provider === "openai-compatible" ||
     provider === "gemini" ||
     provider === "voyage" ||
     provider === "auto";
@@ -166,11 +171,15 @@ function mergeConfig(
   const modelDefault =
     provider === "gemini"
       ? DEFAULT_GEMINI_MODEL
-      : provider === "openai"
-        ? DEFAULT_OPENAI_MODEL
-        : provider === "voyage"
-          ? DEFAULT_VOYAGE_MODEL
-          : undefined;
+      : provider === "openrouter"
+        ? DEFAULT_OPENROUTER_MODEL
+        : provider === "openai"
+          ? DEFAULT_OPENAI_MODEL
+          : provider === "openai-compatible"
+            ? DEFAULT_OPENAI_MODEL
+            : provider === "voyage"
+              ? DEFAULT_VOYAGE_MODEL
+              : undefined;
   const model = overrides?.model ?? defaults?.model ?? modelDefault ?? "";
   const local = {
     modelPath: overrides?.local?.modelPath ?? defaults?.local?.modelPath,

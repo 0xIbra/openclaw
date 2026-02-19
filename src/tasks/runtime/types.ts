@@ -1,3 +1,4 @@
+import type { OpenClawConfig } from "../../config/config.js";
 import type { TaskService } from "../service.js";
 import type { TaskAttemptRecord, TaskClaimRecord, TaskRecord } from "../types.js";
 
@@ -73,6 +74,7 @@ export type TaskWorkerEvent = {
 export type TaskWorkerOptions = {
   taskService: TaskService;
   executor: TaskExecutor;
+  config?: OpenClawConfig;
   agentId: string;
   teamIds?: string[];
   leaseDurationMs?: number;
@@ -93,6 +95,7 @@ export type TaskWorker = {
 
 export type TaskRuntimeSupervisorOptions = {
   taskService: TaskService;
+  config?: OpenClawConfig;
   createExecutor: (agentId: string) => TaskExecutor;
   createWorker?: (options: TaskWorkerOptions) => TaskWorker;
   reconcileIntervalMs?: number;
@@ -146,6 +149,7 @@ export type TaskLeadEvent = {
 
 export type TaskLeadOptions = {
   taskService: TaskService;
+  config?: OpenClawConfig;
   teamId: string;
   teamName: string;
   leadAgentId: string;
@@ -166,6 +170,7 @@ export type TaskLead = {
 
 export type TaskLeadSupervisorOptions = {
   taskService: TaskService;
+  config?: OpenClawConfig;
   createLead?: (options: TaskLeadOptions) => TaskLead;
   reconcileIntervalMs?: number;
   onLeadEvent?: (event: TaskLeadEvent) => void;

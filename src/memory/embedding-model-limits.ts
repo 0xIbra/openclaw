@@ -6,6 +6,7 @@ const KNOWN_EMBEDDING_MAX_INPUT_TOKENS: Record<string, number> = {
   "openai:text-embedding-3-small": 8192,
   "openai:text-embedding-3-large": 8192,
   "openai:text-embedding-ada-002": 8191,
+  "openrouter:qwen/qwen3-embedding-8b": 32768,
   "gemini:text-embedding-004": 2048,
   "voyage:voyage-3": 32000,
   "voyage:voyage-3-lite": 16000,

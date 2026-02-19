@@ -119,6 +119,52 @@ describe("embedding provider remote overrides", () => {
     expect(headers.Authorization).toBe("Bearer provider-key");
   });
 
+  it("supports openai-compatible provider config for custom endpoints", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(authModule.resolveApiKeyForProvider).mockResolvedValue({
+      apiKey: "compat-key",
+      mode: "api-key",
+      source: "test",
+    });
+
+    const cfg = {
+      models: {
+        providers: {
+          "openai-compatible": {
+            baseUrl: "https://novita.example/v1",
+            headers: {
+              "X-Provider": "novita",
+            },
+          },
+        },
+      },
+    };
+
+    const result = await createEmbeddingProvider({
+      config: cfg as never,
+      provider: "openai-compatible",
+      model: "openai-compatible/text-embedding-custom",
+      fallback: "none",
+    });
+
+    await result.provider.embedQuery("hello");
+
+    expect(result.provider.id).toBe("openai-compatible");
+    expect(authModule.resolveApiKeyForProvider).toHaveBeenCalledWith({
+      provider: "openai-compatible",
+      cfg,
+      agentDir: undefined,
+    });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://novita.example/v1/embeddings");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer compat-key");
+    expect(headers["X-Provider"]).toBe("novita");
+    const payload = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+    expect(payload.model).toBe("text-embedding-custom");
+  });
+
   it("builds Gemini embeddings requests with api key header", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -162,6 +208,35 @@ describe("embedding provider remote overrides", () => {
     expect(headers["x-goog-api-key"]).toBe("gemini-key");
     expect(headers["Content-Type"]).toBe("application/json");
   });
+
+  it("builds OpenRouter embeddings requests with default model", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(authModule.resolveApiKeyForProvider).mockResolvedValue({
+      apiKey: "provider-key",
+      mode: "api-key",
+      source: "test",
+    });
+
+    const result = await createEmbeddingProvider({
+      config: {} as never,
+      provider: "openrouter",
+      remote: {
+        apiKey: "openrouter-key",
+      },
+      model: "",
+      fallback: "none",
+    });
+
+    await result.provider.embedQuery("hello");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://openrouter.ai/api/v1/embeddings");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer openrouter-key");
+    const payload = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+    expect(payload.model).toBe("qwen/qwen3-embedding-8b");
+  });
 });
 
 describe("embedding provider auto selection", () => {
@@ -197,6 +272,9 @@ describe("embedding provider auto selection", () => {
     })) as unknown as typeof fetch;
     vi.stubGlobal("fetch", fetchMock);
     vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      if (provider === "openrouter") {
+        throw new Error('No API key found for provider "openrouter".');
+      }
       if (provider === "openai") {
         throw new Error('No API key found for provider "openai".');
       }
@@ -230,6 +308,9 @@ describe("embedding provider auto selection", () => {
     })) as unknown as typeof fetch;
     vi.stubGlobal("fetch", fetchMock);
     vi.mocked(authModule.resolveApiKeyForProvider).mockImplementation(async ({ provider }) => {
+      if (provider === "openrouter") {
+        throw new Error('No API key found for provider "openrouter".');
+      }
       if (provider === "openai") {
         return { apiKey: "openai-key", source: "env: OPENAI_API_KEY", mode: "api-key" };
       }

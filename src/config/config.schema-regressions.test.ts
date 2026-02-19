@@ -36,4 +36,19 @@ describe("config schema regressions", () => {
 
     expect(res.ok).toBe(true);
   });
+
+  it('accepts memorySearch provider/fallback "openai-compatible"', () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          memorySearch: {
+            provider: "openai-compatible",
+            fallback: "openai-compatible",
+          },
+        },
+      },
+    });
+
+    expect(res.ok).toBe(true);
+  });
 });

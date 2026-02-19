@@ -411,6 +411,7 @@ export async function startGatewayServer(
   const taskRuntimeSupervisor = taskRuntimeEnabled
     ? createTaskRuntimeSupervisor({
         taskService,
+        config: cfgAtStart,
         createExecutor: createEmbeddedTaskExecutorFactory({
           config: cfgAtStart,
         }),
@@ -422,6 +423,7 @@ export async function startGatewayServer(
   const taskLeadSupervisor = taskRuntimeEnabled
     ? createTaskLeadSupervisor({
         taskService,
+        config: cfgAtStart,
         onLeadEvent: (event) => {
           broadcast("tasks.lead.changed", event, { dropIfSlow: true });
         },

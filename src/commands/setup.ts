@@ -5,6 +5,7 @@ import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../agents/wor
 import { type OpenClawConfig, createConfigIO, writeConfigFile } from "../config/config.js";
 import { formatConfigPath, logConfigUpdated } from "../config/logging.js";
 import { resolveSessionTranscriptsDir } from "../config/sessions.js";
+import { DEFAULT_AGENT_ID } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { shortenHomePath } from "../utils.js";
 
@@ -66,6 +67,7 @@ export async function setupCommand(
   const ws = await ensureAgentWorkspace({
     dir: workspace,
     ensureBootstrapFiles: !next.agents?.defaults?.skipBootstrap,
+    agentId: DEFAULT_AGENT_ID,
   });
   runtime.log(`Workspace OK: ${shortenHomePath(ws.dir)}`);
 

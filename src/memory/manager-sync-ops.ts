@@ -11,6 +11,10 @@ import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.j
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { resolveUserPath } from "../utils.js";
+import { DEFAULT_GEMINI_EMBEDDING_MODEL } from "./embeddings-gemini.js";
+import { DEFAULT_OPENAI_EMBEDDING_MODEL } from "./embeddings-openai.js";
+import { DEFAULT_OPENROUTER_EMBEDDING_MODEL } from "./embeddings-openrouter.js";
+import { DEFAULT_VOYAGE_EMBEDDING_MODEL } from "./embeddings-voyage.js";
 import {
   buildFileEntry,
   ensureDir,
@@ -834,7 +838,8 @@ class MemoryManagerSyncOps {
     const batch = this.settings.remote?.batch;
     const enabled = Boolean(
       batch?.enabled &&
-      ((this.openAi && this.provider.id === "openai") ||
+      ((this.openAi &&
+        (this.provider.id === "openai" || this.provider.id === "openai-compatible")) ||
         (this.gemini && this.provider.id === "gemini") ||
         (this.voyage && this.provider.id === "voyage")),
     );
@@ -855,16 +860,24 @@ class MemoryManagerSyncOps {
     if (this.fallbackFrom) {
       return false;
     }
-    const fallbackFrom = this.provider.id as "openai" | "gemini" | "local" | "voyage";
+    const fallbackFrom = this.provider.id as
+      | "openai"
+      | "openai-compatible"
+      | "gemini"
+      | "local"
+      | "voyage"
+      | "openrouter";
 
     const fallbackModel =
       fallback === "gemini"
         ? DEFAULT_GEMINI_EMBEDDING_MODEL
-        : fallback === "openai"
-          ? DEFAULT_OPENAI_EMBEDDING_MODEL
-          : fallback === "voyage"
-            ? DEFAULT_VOYAGE_EMBEDDING_MODEL
-            : this.settings.model;
+        : fallback === "openrouter"
+          ? DEFAULT_OPENROUTER_EMBEDDING_MODEL
+          : fallback === "openai" || fallback === "openai-compatible"
+            ? DEFAULT_OPENAI_EMBEDDING_MODEL
+            : fallback === "voyage"
+              ? DEFAULT_VOYAGE_EMBEDDING_MODEL
+              : this.settings.model;
 
     const fallbackResult = await createEmbeddingProvider({
       config: this.cfg,
@@ -880,6 +893,7 @@ class MemoryManagerSyncOps {
     this.fallbackReason = reason;
     this.provider = fallbackResult.provider;
     this.openAi = fallbackResult.openAi;
+    this.openRouter = fallbackResult.openRouter;
     this.gemini = fallbackResult.gemini;
     this.voyage = fallbackResult.voyage;
     this.providerKey = this.computeProviderKey();

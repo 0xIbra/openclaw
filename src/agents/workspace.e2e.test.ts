@@ -100,6 +100,40 @@ describe("ensureAgentWorkspace", () => {
     expect(state.bootstrapSeededAt).toBeUndefined();
     expect(state.onboardingCompletedAt).toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
+
+  it("seeds Ares identity defaults for the main agent", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-workspace-");
+
+    await ensureAgentWorkspace({
+      dir: tempDir,
+      ensureBootstrapFiles: true,
+      agentId: "main",
+    });
+
+    const identity = await fs.readFile(path.join(tempDir, DEFAULT_IDENTITY_FILENAME), "utf-8");
+    expect(identity).toContain("- Name: Ares");
+    expect(identity).toContain("- Theme: master-control");
+    expect(identity).toContain("- Emoji: 🛡️");
+  });
+
+  it("does not overwrite a custom main-agent identity", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-workspace-");
+    await writeWorkspaceFile({
+      dir: tempDir,
+      name: DEFAULT_IDENTITY_FILENAME,
+      content: "# IDENTITY.md\n\n- Name: Morpheus\n- Emoji: 🧠\n",
+    });
+
+    await ensureAgentWorkspace({
+      dir: tempDir,
+      ensureBootstrapFiles: true,
+      agentId: "main",
+    });
+
+    const identity = await fs.readFile(path.join(tempDir, DEFAULT_IDENTITY_FILENAME), "utf-8");
+    expect(identity).toContain("- Name: Morpheus");
+    expect(identity).not.toContain("- Name: Ares");
+  });
 });
 
 describe("loadWorkspaceBootstrapFiles", () => {

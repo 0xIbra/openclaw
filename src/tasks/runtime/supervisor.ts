@@ -68,6 +68,7 @@ export function createTaskRuntimeSupervisor(
           const pausedWorker = createWorker({
             taskService: options.taskService,
             executor: options.createExecutor(agentId),
+            config: options.config,
             agentId,
             teamIds,
             onEvent: emit,
@@ -86,6 +87,7 @@ export function createTaskRuntimeSupervisor(
       const worker = createWorker({
         taskService: options.taskService,
         executor: options.createExecutor(agentId),
+        config: options.config,
         agentId,
         teamIds,
         onEvent: emit,
