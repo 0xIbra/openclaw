@@ -11,6 +11,7 @@ import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
+import { createKimiCliTool } from "./tools/kimi-cli-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createProjectsTool } from "./tools/projects-tool.js";
@@ -93,6 +94,7 @@ export function createOpenClawTools(options?: {
         requireExplicitTarget: options?.requireExplicitMessageTarget,
       });
   const tools: AnyAgentTool[] = [
+    createKimiCliTool(), // Kimi CLI - core software engineering tool
     createBrowserCliTool(), // New playwright-cli based browser tool (preferred)
     createBrowserTool({
       sandboxBridgeUrl: options?.sandboxBrowserBridgeUrl,
