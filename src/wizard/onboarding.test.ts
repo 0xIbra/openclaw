@@ -30,9 +30,8 @@ const configureGatewayForOnboarding = vi.hoisted(() =>
 );
 const finalizeOnboardingWizard = vi.hoisted(() =>
   vi.fn(async (options) => {
-    if (!process.env.BRAVE_API_KEY) {
-      await options.prompter.note("hint", "Web search (optional)");
-    }
+    // Always show web search section during onboarding
+    await options.prompter.note("hint", "Web search (optional)");
 
     if (options.opts.skipUi) {
       return { launchedTui: false };
@@ -353,39 +352,28 @@ describe("runOnboardingWizard", () => {
     await runTuiHatchTest({ writeBootstrapFile: false, expectedMessage: undefined });
   });
 
-  it("shows the web search hint at the end of onboarding", async () => {
-    const prevBraveKey = process.env.BRAVE_API_KEY;
-    delete process.env.BRAVE_API_KEY;
+  it("shows the web search section at the end of onboarding", async () => {
+    const note: WizardPrompter["note"] = vi.fn(async () => {});
+    const prompter = createWizardPrompter({ note });
+    const runtime = createRuntime();
 
-    try {
-      const note: WizardPrompter["note"] = vi.fn(async () => {});
-      const prompter = createWizardPrompter({ note });
-      const runtime = createRuntime();
+    await runOnboardingWizard(
+      {
+        acceptRisk: true,
+        flow: "quickstart",
+        authChoice: "skip",
+        installDaemon: false,
+        skipProviders: true,
+        skipSkills: true,
+        skipHealth: true,
+        skipUi: true,
+      },
+      runtime,
+      prompter,
+    );
 
-      await runOnboardingWizard(
-        {
-          acceptRisk: true,
-          flow: "quickstart",
-          authChoice: "skip",
-          installDaemon: false,
-          skipProviders: true,
-          skipSkills: true,
-          skipHealth: true,
-          skipUi: true,
-        },
-        runtime,
-        prompter,
-      );
-
-      const calls = (note as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
-      expect(calls.some((call) => call?.[1] === "Web search (optional)")).toBe(true);
-    } finally {
-      if (prevBraveKey === undefined) {
-        delete process.env.BRAVE_API_KEY;
-      } else {
-        process.env.BRAVE_API_KEY = prevBraveKey;
-      }
-    }
+    const calls = (note as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.some((call) => call?.[1] === "Web search (optional)")).toBe(true);
   });
 });

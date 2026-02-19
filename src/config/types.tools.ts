@@ -356,36 +356,14 @@ export type ToolsConfig = {
   byProvider?: Record<string, ToolPolicyConfig>;
   web?: {
     search?: {
-      /** Enable web search tool (default: true when API key is present). */
+      /** Enable web search tool (default: true). */
       enabled?: boolean;
-      /** Search provider ("brave", "perplexity", or "grok"). */
-      provider?: "brave" | "perplexity" | "grok";
-      /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
-      apiKey?: string;
       /** Default search results count (1-10). */
       maxResults?: number;
       /** Timeout in seconds for search requests. */
       timeoutSeconds?: number;
       /** Cache TTL in minutes for search results. */
       cacheTtlMinutes?: number;
-      /** Perplexity-specific configuration (used when provider="perplexity"). */
-      perplexity?: {
-        /** API key for Perplexity or OpenRouter (defaults to PERPLEXITY_API_KEY or OPENROUTER_API_KEY env var). */
-        apiKey?: string;
-        /** Base URL for API requests (defaults to OpenRouter: https://openrouter.ai/api/v1). */
-        baseUrl?: string;
-        /** Model to use (defaults to "perplexity/sonar-pro"). */
-        model?: string;
-      };
-      /** Grok-specific configuration (used when provider="grok"). */
-      grok?: {
-        /** API key for xAI (defaults to XAI_API_KEY env var). */
-        apiKey?: string;
-        /** Model to use (defaults to "grok-4-1-fast"). */
-        model?: string;
-        /** Include inline citations in response text as markdown links (default: false). */
-        inlineCitations?: boolean;
-      };
     };
     fetch?: {
       /** Enable web fetch tool (default: true). */
@@ -404,20 +382,6 @@ export type ToolsConfig = {
       userAgent?: string;
       /** Use Readability to extract main content (default: true). */
       readability?: boolean;
-      firecrawl?: {
-        /** Enable Firecrawl fallback (default: true when apiKey is set). */
-        enabled?: boolean;
-        /** Firecrawl API key (optional; defaults to FIRECRAWL_API_KEY env var). */
-        apiKey?: string;
-        /** Firecrawl base URL (default: https://api.firecrawl.dev). */
-        baseUrl?: string;
-        /** Whether to keep only main content (default: true). */
-        onlyMainContent?: boolean;
-        /** Max age (ms) for cached Firecrawl content. */
-        maxAgeMs?: number;
-        /** Timeout in seconds for Firecrawl requests. */
-        timeoutSeconds?: number;
-      };
     };
   };
   media?: MediaToolsConfig;

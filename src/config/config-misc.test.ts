@@ -50,19 +50,16 @@ describe("ui.seamColor", () => {
   });
 });
 
-describe("web search provider config", () => {
-  it("accepts perplexity provider and config", () => {
+describe("web search config", () => {
+  it("accepts web search without provider (uses playwright-cli)", () => {
     const res = validateConfigObject({
       tools: {
         web: {
           search: {
             enabled: true,
-            provider: "perplexity",
-            perplexity: {
-              apiKey: "test-key",
-              baseUrl: "https://api.perplexity.ai",
-              model: "perplexity/sonar-pro",
-            },
+            maxResults: 5,
+            timeoutSeconds: 30,
+            cacheTtlMinutes: 60,
           },
         },
       },

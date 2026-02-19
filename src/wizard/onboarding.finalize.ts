@@ -432,29 +432,23 @@ export async function finalizeOnboardingWizard(
     );
   }
 
-  const webSearchKey = (nextConfig.tools?.web?.search?.apiKey ?? "").trim();
-  const webSearchEnv = (process.env.BRAVE_API_KEY ?? "").trim();
-  const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
+  const webSearchEnabled = nextConfig.tools?.web?.search?.enabled !== false;
   await prompter.note(
-    hasWebSearchKey
+    webSearchEnabled
       ? [
           "Web search is enabled, so your agent can look things up online when needed.",
-          "",
-          webSearchKey
-            ? "API key: stored in config (tools.web.search.apiKey)."
-            : "API key: provided via BRAVE_API_KEY env var (Gateway environment).",
+          "Uses browser automation via playwright-cli (no API key required).",
           "Docs: https://docs.openclaw.ai/tools/web",
         ].join("\n")
       : [
-          "If you want your agent to be able to search the web, you’ll need an API key.",
+          "Web search is disabled. Enable it to let your agent search the web.",
           "",
-          "OpenClaw uses Brave Search for the `web_search` tool. Without a Brave Search API key, web search won’t work.",
+          "Uses browser automation via playwright-cli (no API key required).",
           "",
           "Set it up interactively:",
           `- Run: ${formatCliCommand("openclaw configure --section web")}`,
-          "- Enable web_search and paste your Brave Search API key",
+          "- Enable web_search",
           "",
-          "Alternative: set BRAVE_API_KEY in the Gateway environment (no config changes).",
           "Docs: https://docs.openclaw.ai/tools/web",
         ].join("\n"),
     "Web search (optional)",
