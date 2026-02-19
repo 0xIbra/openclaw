@@ -89,6 +89,9 @@ async function runPrintMode(
   flags: { yolo?: boolean; thinking?: boolean; quiet?: boolean },
 ): Promise<string> {
   const args = ["--print", "-p", message];
+  if (workdir) {
+    args.push("--work-dir", workdir);
+  }
 
   if (flags.yolo) {
     args.push("--yolo");
@@ -120,9 +123,14 @@ async function startInteractiveSession(
 ): Promise<KimiCliSession> {
   const { createPtyAdapter } = await import("../../process/supervisor/adapters/pty.js");
 
+  const args: string[] = [];
+  if (workdir) {
+    args.push("--work-dir", workdir);
+  }
+
   const pty = await createPtyAdapter({
     shell: "kimi",
-    args: [],
+    args,
     cwd: workdir,
     cols: cols ?? 120,
     rows: rows ?? 30,
@@ -270,13 +278,15 @@ export function createKimiCliTool(): AnyAgentTool {
 **run** - One-shot task execution (non-interactive, print mode)
 - Use for quick tasks that don't need interaction
 - Auto-exits after completion
-- Example: {"action":"run", "message":"Explain src/auth.ts", "workdir":"/project", "yolo":true}
+- IMPORTANT: You must use the \`workdir\` parameter or \`cd\` into the project explicitly. Kimi does not inherit your workspace automatically.
+- Example: {"action":"run", "message":"Explain src/auth.ts", "workdir":"/path/to/project", "yolo":true}
 
 **start** - Start interactive PTY session
 - REQUIRED for interactive Kimi CLI usage
 - Returns session_id for send/poll/close
 - Full terminal emulation with colors, progress bars, etc.
-- Example: {"action":"start", "workdir":"/project"}
+- IMPORTANT: You must provide the \`workdir\` parameter as the absolute path to the project you are working on, otherwise Kimi will open in the wrong directory.
+- Example: {"action":"start", "workdir":"/path/to/project"}
 
 **send** - Send text input to interactive session
 - The message is sent as if user typed it + Enter
