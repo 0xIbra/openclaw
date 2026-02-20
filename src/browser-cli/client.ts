@@ -6,11 +6,15 @@
 
 import { spawn } from "node:child_process";
 import { exec } from "node:child_process";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const execAsync = promisify(exec);
 const log = createSubsystemLogger("browser-cli");
+
+// Use temp directory to avoid creating .playwright-cli in project root
+const PLAYWRIGHT_CLI_CWD = tmpdir();
 
 export interface CliOptions {
   session?: string;
@@ -31,6 +35,7 @@ export function runPlaywrightCli(
     const child = spawn("playwright-cli", cliArgs, {
       stdio: ["pipe", "pipe", "pipe"],
       timeout,
+      cwd: PLAYWRIGHT_CLI_CWD,
     });
 
     let stdout = "";
@@ -138,7 +143,7 @@ export class BrowserClient {
     } catch {
       // Force kill if needed
       try {
-        await execAsync("playwright-cli kill-all");
+        await execAsync("playwright-cli kill-all", { cwd: PLAYWRIGHT_CLI_CWD });
       } catch {
         // Ignore
       }

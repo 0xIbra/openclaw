@@ -157,12 +157,40 @@ const coreEntries: CoreCliEntry[] = [
         description: "Manage isolated agents (workspaces, auth, routing)",
         hasSubcommands: true,
       },
+      // Phase 3: Agent supervision commands
+      {
+        name: "agent:health",
+        description: "Show runtime health for agents",
+        hasSubcommands: false,
+      },
+      {
+        name: "agent:restart",
+        description: "Restart an agent worker",
+        hasSubcommands: false,
+      },
+      {
+        name: "agent:pause",
+        description: "Pause an agent worker",
+        hasSubcommands: false,
+      },
+      {
+        name: "agent:resume",
+        description: "Resume a paused agent worker",
+        hasSubcommands: false,
+      },
+      {
+        name: "task:recover",
+        description: "Recover a failed or stuck task",
+        hasSubcommands: false,
+      },
     ],
     register: async ({ program, ctx }) => {
       const mod = await import("./register.agent.js");
       mod.registerAgentCommands(program, {
         agentChannelOptions: ctx.agentChannelOptions,
       });
+      const supervisionMod = await import("../agent-supervision-cli.js");
+      supervisionMod.registerAgentSupervisionCli(program);
     },
   },
   {

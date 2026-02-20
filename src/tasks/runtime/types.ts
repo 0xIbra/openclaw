@@ -87,6 +87,12 @@ export type TaskWorkerStatus = {
   errorStreak: number;
   lastError: string | null;
   updatedAtMs: number;
+  // Phase 3: Supervision fields (optional for backward compatibility)
+  memoryUsageMb?: number;
+  maxMemoryMb?: number;
+  lastHealthCheckAtMs?: number | null;
+  consecutiveErrors?: number;
+  lastSuccessfulTaskAtMs?: number | null;
 };
 
 export type TaskWorkerEventReason = "started" | "status" | "stopped";
@@ -106,6 +112,13 @@ export type TaskWorkerOptions = {
   heartbeatIntervalMs?: number;
   idlePollMs?: number;
   maxBackoffMs?: number;
+  // Phase 3: Supervision options
+  maxMemoryMb?: number;
+  memoryCheckIntervalMs?: number;
+  maxConsecutiveErrors?: number;
+  errorResetIntervalMs?: number;
+  onMemoryLimit?: () => void;
+  onConsecutiveErrors?: () => void;
   now?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   onEvent?: (event: TaskWorkerEvent) => void;

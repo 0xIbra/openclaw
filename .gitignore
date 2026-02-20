@@ -80,6 +80,9 @@ USER.md
 # local tooling
 .serena/
 
+# Playwright CLI console logs
+.playwright-cli/
+
 # Agent credentials and memory (NEVER COMMIT)
 /memory/
 .agent/*.json
