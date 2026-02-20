@@ -128,13 +128,10 @@ img.chat-avatar {
   position: relative;
   display: inline-block;
   border: 1px solid transparent;
-  background: var(--card);
-  border-radius: var(--radius-lg);
-  padding: 10px 14px;
+  background: transparent;
+  border-radius: 0;
+  padding: 8px 0;
   box-shadow: none;
-  transition:
-    background 150ms ease-out,
-    border-color 150ms ease-out;
   max-width: 100%;
   word-wrap: break-word;
 }
@@ -243,20 +240,22 @@ img.chat-avatar {
   }
 }
 
-/* Light mode: restore borders */
+/* Prevent light mode from rendering unwanted borders on transparent assistant text */
 :root[data-theme="light"] .chat-bubble {
-  border-color: var(--border);
-  box-shadow: inset 0 1px 0 var(--card-highlight);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .chat-bubble:hover {
-  background: var(--bg-hover);
+  background: transparent;
 }
 
-/* User bubbles have different styling */
+/* User bubbles actually look like bubbles */
 .chat-group.user .chat-bubble {
   background: var(--accent-subtle);
   border-color: transparent;
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
 }
 
 :root[data-theme="light"] .chat-group.user .chat-bubble {

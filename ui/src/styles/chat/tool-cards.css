@@ -1,170 +1,161 @@
-/* Tool Card Styles */
-.chat-tool-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+/* Sleek Inline Tool Accordion Styles */
+.chat-tool-accordion {
   margin-top: 8px;
-  background: var(--card);
-  box-shadow: inset 0 1px 0 var(--card-highlight);
-  transition:
-    border-color 150ms ease-out,
-    background 150ms ease-out;
-  /* Fixed max-height to ensure cards don't expand too much */
-  max-height: 120px;
-  overflow: hidden;
+  background: transparent;
+  display: block;
 }
 
-.chat-tool-card:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+.chat-tool-accordion:first-child {
+  margin-top: 2px;
 }
 
-/* First tool card in a group - no top margin */
-.chat-tool-card:first-child {
-  margin-top: 0;
+/* Hide default marker in all browsers */
+.chat-tool-accordion>summary {
+  list-style: none;
+  /* Firefox/Standard */
 }
 
-.chat-tool-card--clickable {
-  cursor: pointer;
+.chat-tool-accordion>summary::-webkit-details-marker {
+  display: none;
+  /* WebKit */
 }
 
-.chat-tool-card--clickable:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* Header with title and chevron */
-.chat-tool-card__header {
-  display: flex;
-  justify-content: space-between;
+.chat-tool-accordion__header {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.chat-tool-card__title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
   font-size: 13px;
-  line-height: 1.2;
+  color: var(--text);
+  border-radius: 99px;
+  /* Pill shape */
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 150ms ease;
+  max-width: 100%;
 }
 
-.chat-tool-card__icon {
-  display: inline-flex;
+:root[data-theme="light"] .chat-tool-accordion__header {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.chat-tool-accordion__header:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme="light"] .chat-tool-accordion__header:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.chat-tool-accordion[open] .chat-tool-accordion__header {
+  margin-bottom: 8px;
+  border-radius: 12px;
+}
+
+.chat-tool-accordion__icon {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.chat-tool-card__icon svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* "View >" action link */
-.chat-tool-card__action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--accent);
+  color: var(--muted);
   opacity: 0.8;
-  transition: opacity 150ms ease-out;
 }
 
-.chat-tool-card__action svg {
-  width: 12px;
-  height: 12px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.chat-tool-card--clickable:hover .chat-tool-card__action {
-  opacity: 1;
-}
-
-/* Status indicator for completed/empty results */
-.chat-tool-card__status {
-  display: inline-flex;
-  align-items: center;
-  color: var(--ok);
-}
-
-.chat-tool-card__status svg {
+.chat-tool-accordion__icon svg {
   width: 14px;
   height: 14px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 2px;
+  stroke-width: 2.2px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.chat-tool-card__status-text {
-  font-size: 11px;
-  margin-top: 4px;
+.chat-tool-accordion__title {
+  white-space: nowrap;
 }
 
-.chat-tool-card__detail {
-  font-size: 12px;
+.chat-tool-accordion__badge {
   color: var(--muted);
-  margin-top: 4px;
-}
-
-/* Collapsed preview - fixed height with truncation */
-.chat-tool-card__preview {
   font-size: 11px;
-  color: var(--muted);
-  margin-top: 8px;
-  padding: 8px 10px;
-  background: var(--secondary);
-  border-radius: var(--radius-md);
-  white-space: pre-wrap;
+  font-family: var(--mono);
+  padding: 0 4px;
+  white-space: nowrap;
   overflow: hidden;
-  max-height: 44px;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  opacity: 0.8;
+}
+
+.chat-tool-accordion__chevron {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  transform: rotate(-90deg);
+  /* points right when closed */
+  transition: transform 150ms ease;
+  opacity: 0.6;
+}
+
+.chat-tool-accordion__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-tool-accordion[open] .chat-tool-accordion__chevron {
+  transform: rotate(0deg);
+  /* points down when open */
+}
+
+.chat-tool-accordion__content {
+  padding-left: 12px;
+  /* slight indent */
+}
+
+.chat-tool-accordion__output {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
   line-height: 1.4;
-  border: 1px solid var(--border);
-}
-
-.chat-tool-card--clickable:hover .chat-tool-card__preview {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-}
-
-/* Short inline output */
-.chat-tool-card__inline {
-  font-size: 11px;
-  color: var(--text);
-  margin-top: 6px;
-  padding: 6px 8px;
-  background: var(--secondary);
-  border-radius: var(--radius-sm);
+  color: var(--muted);
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: 350px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme="light"] .chat-tool-accordion__output {
+  background: #f7f7f8;
+  border-color: rgba(0, 0, 0, 0.06);
+  color: var(--text);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.chat-tool-accordion__empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding-left: 10px;
 }
 
 /* Reading Indicator */
 .chat-reading-indicator {
   background: transparent;
-  border: 1px solid var(--border);
-  padding: 12px;
+  border: none;
+  padding: 8px 0;
   display: inline-flex;
 }
 
 .chat-reading-indicator__dots {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
 }
 
@@ -189,12 +180,14 @@
 }
 
 @keyframes reading-pulse {
+
   0%,
   60%,
   100% {
     opacity: 0.3;
     transform: scale(0.8);
   }
+
   30% {
     opacity: 1;
     transform: scale(1);

@@ -240,7 +240,10 @@ function renderGroupedMessage(
     opts.showReasoning && role === "assistant" ? extractThinkingCached(message) : null;
   const markdownBase = extractedText?.trim() ? extractedText : null;
   const reasoningMarkdown = extractedThinking ? formatReasoningMarkdown(extractedThinking) : null;
-  const markdown = markdownBase;
+
+  // Never render raw JSON or tool results as primary markdown text balloons.
+  // Their content is handled specifically inside the toolCards themselves.
+  const markdown = isToolResult ? null : markdownBase;
   const canCopyMarkdown = role === "assistant" && Boolean(markdown?.trim());
 
   const bubbleClasses = [
@@ -252,7 +255,7 @@ function renderGroupedMessage(
     .filter(Boolean)
     .join(" ");
 
-  if (!markdown && hasToolCards && isToolResult) {
+  if (!markdown && hasToolCards) {
     return html`${toolCards.map((card) => renderToolCardSidebar(card, onOpenSidebar))}`;
   }
 
