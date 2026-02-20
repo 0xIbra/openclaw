@@ -31,6 +31,7 @@ import { readSessionUpdatedAt, resolveStorePath } from "../config/sessions.js";
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { logVerbose, shouldLogVerbose } from "../globals.js";
 import { recordChannelActivity } from "../infra/channel-activity.js";
+import { resolveAgentMentionRouting, hasAgentMention } from "../routing/agent-mentions.js";
 import { buildAgentSessionKey, resolveAgentRoute } from "../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../routing/session-key.js";
 import { resolveTeamLeadRoutingFromDefaultService } from "../tasks/team-routing.js";
@@ -232,6 +233,85 @@ export const buildTelegramMessageContext = async ({
     mentionRegexes = buildMentionRegexes(cfg, route.agentId);
     routedBodyText = teamRouting.rewrittenMessage;
   }
+
+  // Agent mention routing: @ares, @agent-id, @team-lead
+  // Check for @ares/@agent/@team-lead mentions if not already routed by team lead pattern
+  if (!routedBodyText) {
+    const agentRouting = resolveAgentMentionRouting({ text: routingText, cfg });
+    if (agentRouting.kind === "ares") {
+      // Route to Ares - use special ares session key
+      const aresAgentId = "ares";
+      route = {
+        ...route,
+        agentId: aresAgentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: aresAgentId,
+          channel: "telegram",
+          accountId: account.accountId,
+          peer: { kind: isGroup ? "group" : "direct", id: peerId },
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({ cfg, agentId: aresAgentId }),
+      };
+      baseSessionKey = route.sessionKey;
+      threadKeys =
+        dmThreadId != null
+          ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
+          : null;
+      sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+      mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+      routedBodyText = agentRouting.rewrittenMessage;
+      logVerbose(`telegram: routed to Ares via @ares mention, sessionKey=${sessionKey}`);
+    } else if (agentRouting.kind === "agent") {
+      // Route to specific agent
+      route = {
+        ...route,
+        agentId: agentRouting.agentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: agentRouting.agentId,
+          channel: "telegram",
+          accountId: account.accountId,
+          peer: { kind: isGroup ? "group" : "direct", id: peerId },
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({ cfg, agentId: agentRouting.agentId }),
+      };
+      baseSessionKey = route.sessionKey;
+      threadKeys =
+        dmThreadId != null
+          ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
+          : null;
+      sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+      mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+      routedBodyText = agentRouting.rewrittenMessage;
+      logVerbose(
+        `telegram: routed to agent ${agentRouting.agentId} via mention, sessionKey=${sessionKey}`,
+      );
+    } else if (agentRouting.kind === "team_lead") {
+      // @team-lead pattern matched
+      route = {
+        ...route,
+        agentId: agentRouting.leadAgentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: agentRouting.leadAgentId,
+          channel: "telegram",
+          accountId: account.accountId,
+          peer: { kind: isGroup ? "group" : "direct", id: peerId },
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({ cfg, agentId: agentRouting.leadAgentId }),
+      };
+      baseSessionKey = route.sessionKey;
+      threadKeys =
+        dmThreadId != null
+          ? resolveThreadSessionKeys({ baseSessionKey, threadId: String(dmThreadId) })
+          : null;
+      sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
+      mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+      routedBodyText = agentRouting.rewrittenMessage;
+      logVerbose(
+        `telegram: routed to team lead ${agentRouting.leadAgentId} via @ mention, sessionKey=${sessionKey}`,
+      );
+    }
+  }
+
   const effectiveDmAllow = normalizeAllowFromWithStore({ allowFrom, storeAllowFrom });
   const groupAllowOverride = firstDefined(topicConfig?.allowFrom, groupConfig?.allowFrom);
   const effectiveGroupAllow = normalizeAllowFromWithStore({
@@ -433,7 +513,10 @@ export const buildTelegramMessageContext = async ({
   const hasAnyMention = (msg.entities ?? msg.caption_entities ?? []).some(
     (ent) => ent.type === "mention",
   );
-  const explicitlyMentioned = botUsername ? hasBotMention(msg, botUsername) : false;
+  // Also check for agent mentions (@ares, @agent-id, @team-lead) which might not be detected by entities
+  const hasAgentMentionInText = hasAgentMention(msg.text ?? msg.caption ?? "");
+  const explicitlyMentioned =
+    (botUsername ? hasBotMention(msg, botUsername) : false) || hasAgentMentionInText;
 
   const computedWasMentioned = matchesMentionWithExplicit({
     text: msg.text ?? msg.caption ?? "",

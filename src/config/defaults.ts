@@ -33,12 +33,12 @@ const DEFAULT_MODEL_COST: ModelDefinitionConfig["cost"] = {
 const DEFAULT_MODEL_INPUT: ModelDefinitionConfig["input"] = ["text"];
 const DEFAULT_MODEL_MAX_TOKENS = 8192;
 const DEFAULT_MAIN_AGENT_ID = "main";
-const DEFAULT_MAIN_AGENT_NAME = "Ares";
-const DEFAULT_MAIN_AGENT_ROLE = "master-control";
-const DEFAULT_MAIN_AGENT_VIBE =
+export const DEFAULT_MAIN_AGENT_NAME = "Ares";
+export const DEFAULT_MAIN_AGENT_ROLE = "master-control";
+export const DEFAULT_MAIN_AGENT_VIBE =
   "calm, tactical, direct; decomposes work clearly, delegates with intent, and protects quality";
 const DEFAULT_MAIN_AGENT_THEME = `${DEFAULT_MAIN_AGENT_ROLE} · ${DEFAULT_MAIN_AGENT_VIBE}`;
-const DEFAULT_MAIN_AGENT_EMOJI = "🛡️";
+export const DEFAULT_MAIN_AGENT_EMOJI = "🛡️";
 
 type ModelDefinitionLike = Partial<ModelDefinitionConfig> &
   Pick<ModelDefinitionConfig, "id" | "name">;

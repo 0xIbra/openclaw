@@ -466,6 +466,7 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
   status: "Status",
   management: "Management",
   media: "Media",
+  agents: "Agents",
   tools: "Tools",
   docks: "Docks",
 };
@@ -476,6 +477,7 @@ const CATEGORY_ORDER: CommandCategory[] = [
   "status",
   "management",
   "media",
+  "agents",
   "tools",
   "docks",
 ];

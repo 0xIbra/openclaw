@@ -1,9 +1,10 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { AppViewState } from "./app-view-state.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
 import type { ThemeMode } from "./theme.ts";
 import type { SessionsListResult } from "./types.ts";
+import { parseAgentSessionKey } from "../../../src/routing/session-key.js";
 import { refreshChat } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import { OpenClawApp } from "./app.ts";
@@ -92,6 +93,13 @@ export function renderChatControls(state: AppViewState) {
   const disableFocusToggle = state.onboarding;
   const showThinking = state.onboarding ? false : state.settings.chatShowThinking;
   const focusActive = state.onboarding ? true : state.settings.chatFocusMode;
+
+  // Agent options for selector
+  const agentOptions = state.agentsList?.agents ?? [];
+  const parsedAgentId = parseAgentSessionKey(state.sessionKey)?.agentId ?? "main";
+  const selectedAgentId =
+    agentOptions.find((a) => a.id === parsedAgentId)?.id ?? agentOptions[0]?.id ?? "main";
+
   // Refresh icon
   const refreshIcon = html`
     <svg
@@ -165,6 +173,56 @@ export function renderChatControls(state: AppViewState) {
           )}
         </select>
       </label>
+      
+      ${
+        agentOptions.length > 0
+          ? html`
+            <label class="field chat-controls__agent">
+              <select
+                .value=${selectedAgentId}
+                ?disabled=${!state.connected}
+                @change=${(e: Event) => {
+                  const agentId = (e.target as HTMLSelectElement).value;
+                  // Build new session key with selected agent
+                  const currentParsed = parseAgentSessionKey(state.sessionKey);
+                  const baseKey = currentParsed?.rest ?? "main";
+                  const newSessionKey =
+                    baseKey === "main" ? `agent:${agentId}:main` : `agent:${agentId}:${baseKey}`;
+
+                  state.sessionKey = newSessionKey;
+                  state.chatMessage = "";
+                  state.chatStream = null;
+                  (state as unknown as OpenClawApp).chatStreamStartedAt = null;
+                  state.chatRunId = null;
+                  (state as unknown as OpenClawApp).resetToolStream();
+                  (state as unknown as OpenClawApp).resetChatScroll();
+                  state.applySettings({
+                    ...state.settings,
+                    sessionKey: newSessionKey,
+                    lastActiveSessionKey: newSessionKey,
+                  });
+                  void state.loadAssistantIdentity();
+                  syncUrlWithSessionKey(
+                    state as unknown as Parameters<typeof syncUrlWithSessionKey>[0],
+                    newSessionKey,
+                    true,
+                  );
+                  void loadChatHistory(state as unknown as ChatState);
+                }}
+              >
+                ${repeat(
+                  agentOptions,
+                  (agent) => agent.id,
+                  (agent) =>
+                    html`<option value=${agent.id} title=${agent.id}>
+                      ${agent.identity?.name ?? agent.id}
+                    </option>`,
+                )}
+              </select>
+            </label>
+          `
+          : nothing
+      }
       <button
         class="btn btn--sm btn--icon"
         ?disabled=${state.chatLoading || !state.connected}

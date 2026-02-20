@@ -24,6 +24,7 @@ import { recordChannelActivity } from "../../infra/channel-activity.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { logDebug } from "../../logger.js";
 import { getChildLogger } from "../../logging.js";
+import { resolveAgentMentionRouting, hasAgentMention } from "../../routing/agent-mentions.js";
 import { buildAgentSessionKey, resolveAgentRoute } from "../../routing/resolve-route.js";
 import { resolveTeamLeadRoutingFromDefaultService } from "../../tasks/team-routing.js";
 import { fetchPluralKitMessageInfo } from "../pluralkit.js";
@@ -263,15 +264,101 @@ export async function preflightDiscordMessage(
     baseText = teamRouting.rewrittenMessage;
     messageText = teamRouting.rewrittenMessage;
   }
+
+  // Agent mention routing: @ares, @agent-id, @team-lead
+  // Check for @ares/@agent/@team-lead mentions if not already routed by team lead pattern
+  if (teamRouting.kind !== "matched") {
+    const agentRouting = resolveAgentMentionRouting({ text: baseText, cfg: params.cfg });
+    if (agentRouting.kind === "ares") {
+      // Route to Ares
+      const aresAgentId = "ares";
+      const directPeer = isDirectMessage
+        ? { kind: "direct" as const, id: author.id }
+        : isGroupDm
+          ? { kind: "group" as const, id: messageChannelId }
+          : { kind: "channel" as const, id: messageChannelId };
+      route = {
+        ...route,
+        agentId: aresAgentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: aresAgentId,
+          channel: "discord",
+          accountId: params.accountId,
+          peer: directPeer,
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({ cfg: params.cfg, agentId: aresAgentId }),
+      };
+      baseText = agentRouting.rewrittenMessage;
+      messageText = agentRouting.rewrittenMessage;
+      logVerbose(`discord: routed to Ares via @ares mention, sessionKey=${route.sessionKey}`);
+    } else if (agentRouting.kind === "agent") {
+      // Route to specific agent
+      const directPeer = isDirectMessage
+        ? { kind: "direct" as const, id: author.id }
+        : isGroupDm
+          ? { kind: "group" as const, id: messageChannelId }
+          : { kind: "channel" as const, id: messageChannelId };
+      route = {
+        ...route,
+        agentId: agentRouting.agentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: agentRouting.agentId,
+          channel: "discord",
+          accountId: params.accountId,
+          peer: directPeer,
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({
+          cfg: params.cfg,
+          agentId: agentRouting.agentId,
+        }),
+      };
+      baseText = agentRouting.rewrittenMessage;
+      messageText = agentRouting.rewrittenMessage;
+      logVerbose(
+        `discord: routed to agent ${agentRouting.agentId} via mention, sessionKey=${route.sessionKey}`,
+      );
+    } else if (agentRouting.kind === "team_lead") {
+      // @team-lead pattern matched
+      const directPeer = isDirectMessage
+        ? { kind: "direct" as const, id: author.id }
+        : isGroupDm
+          ? { kind: "group" as const, id: messageChannelId }
+          : { kind: "channel" as const, id: messageChannelId };
+      route = {
+        ...route,
+        agentId: agentRouting.leadAgentId,
+        sessionKey: buildAgentSessionKey({
+          agentId: agentRouting.leadAgentId,
+          channel: "discord",
+          accountId: params.accountId,
+          peer: directPeer,
+        }),
+        mainSessionKey: resolveAgentMainSessionKey({
+          cfg: params.cfg,
+          agentId: agentRouting.leadAgentId,
+        }),
+      };
+      baseText = agentRouting.rewrittenMessage;
+      messageText = agentRouting.rewrittenMessage;
+      logVerbose(
+        `discord: routed to team lead ${agentRouting.leadAgentId} via @ mention, sessionKey=${route.sessionKey}`,
+      );
+    }
+  }
+
   const mentionRegexes = buildMentionRegexes(params.cfg, route.agentId);
+  // Check for bot mention via Discord mentions or agent mentions (@ares, @agent-id, @team-lead)
+  const hasAgentMentionInText = hasAgentMention(baseText);
   const explicitlyMentioned = Boolean(
-    botId && message.mentionedUsers?.some((user: User) => user.id === botId),
+    (botId && message.mentionedUsers?.some((user: User) => user.id === botId)) ||
+    hasAgentMentionInText,
   );
   const hasAnyMention = Boolean(
     !isDirectMessage &&
     (message.mentionedEveryone ||
       (message.mentionedUsers?.length ?? 0) > 0 ||
-      (message.mentionedRoles?.length ?? 0) > 0),
+      (message.mentionedRoles?.length ?? 0) > 0 ||
+      hasAgentMentionInText),
   );
 
   if (

@@ -8,6 +8,7 @@ export type CommandCategory =
   | "status"
   | "management"
   | "media"
+  | "agents"
   | "tools"
   | "docks";
 

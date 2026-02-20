@@ -583,6 +583,42 @@ function buildChatCommands(): ChatCommandDefinition[] {
         },
       ],
     }),
+    defineChatCommand({
+      key: "ares",
+      nativeName: "ares",
+      description: "Talk to Ares (Master Control).",
+      textAlias: "/ares",
+      category: "agents",
+      args: [
+        {
+          name: "message",
+          description: "Message to send to Ares",
+          type: "string",
+          captureRemaining: true,
+        },
+      ],
+    }),
+    defineChatCommand({
+      key: "agent",
+      nativeName: "agent",
+      description: "Talk to a specific agent.",
+      textAlias: "/agent",
+      category: "agents",
+      args: [
+        {
+          name: "agentId",
+          description: "Agent ID (e.g., backend-lead, my-agent)",
+          type: "string",
+          required: true,
+        },
+        {
+          name: "message",
+          description: "Message to send",
+          type: "string",
+          captureRemaining: true,
+        },
+      ],
+    }),
     ...listChannelDocks()
       .filter((dock) => dock.capabilities.nativeCommands)
       .map((dock) => defineDockCommand(dock)),

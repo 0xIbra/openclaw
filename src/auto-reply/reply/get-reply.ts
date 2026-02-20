@@ -6,6 +6,7 @@ import {
   resolveSessionAgentId,
   resolveAgentSkillsFilter,
 } from "../../agents/agent-scope.js";
+import { ares, type AresContext } from "../../agents/ares/index.js";
 import { resolveModelRefFromString } from "../../agents/model-selection.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/workspace.js";
@@ -141,6 +142,7 @@ export async function getReplyFromConfig(
     cfg,
     commandAuthorized,
   });
+
   const sessionState = await initSessionState({
     ctx: finalized,
     cfg,
@@ -164,6 +166,26 @@ export async function getReplyFromConfig(
     triggerBodyNormalized,
     bodyStripped,
   } = sessionState;
+
+  // Ares Master Control: Check if this is a team/task management request
+  const rawBody = typeof ctx.Body === "string" ? ctx.Body : "";
+  const aresGatewayUrl = cfg.gateway?.port ? `http://localhost:${cfg.gateway.port}` : undefined;
+
+  const aresContext: AresContext = {
+    agentId,
+    sessionKey: sessionKey ?? ctx.SessionKey ?? "main",
+    workspaceDir,
+    config: cfg,
+    gatewayUrl: aresGatewayUrl,
+    gatewayToken: cfg.gateway?.auth?.token,
+  };
+
+  const aresResult = await ares.processMessage(rawBody, aresContext);
+  if (aresResult.ok) {
+    // Ares handled this message
+    return { text: aresResult.message };
+  }
+  // Ares didn't handle it (not an Ares request or error) - continue with normal agent flow
 
   await applyResetModelOverride({
     cfg,
