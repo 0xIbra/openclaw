@@ -5,6 +5,7 @@ import type { AnyAgentTool } from "./tools/common.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
+import { createAgentsTool } from "./tools/agents-tool.js";
 import { createBrowserCliTool } from "./tools/browser-cli-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
@@ -111,6 +112,7 @@ export function createOpenClawTools(options?: {
     createProjectsTool(),
     createTasksTool(),
     createTeamsTool(),
+    createAgentsTool(),
     ...(messageTool ? [messageTool] : []),
     createGatewayTool({
       agentSessionKey: options?.agentSessionKey,

@@ -475,6 +475,21 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   const history = Array.isArray(props.messages) ? props.messages : [];
   const tools = Array.isArray(props.toolMessages) ? props.toolMessages : [];
   const historyStart = Math.max(0, history.length - CHAT_HISTORY_RENDER_LIMIT);
+
+  // During a live run the tool stream has entries keyed by toolCallId.
+  // Those messages contain both call args and live output in one message,
+  // so they take precedence over the raw history equivalents.
+  // Once the run ends, resetToolStream() clears the stream and history is
+  // the sole source — extractToolCards() now pairs call+result within a
+  // single message, so history renders correctly on its own.
+  const streamedIds = new Set<string>();
+  for (const t of tools) {
+    const id = (t as Record<string, unknown>).toolCallId;
+    if (typeof id === "string" && id) {
+      streamedIds.add(id);
+    }
+  }
+
   if (historyStart > 0) {
     items.push({
       kind: "message",
@@ -486,10 +501,12 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
       },
     });
   }
+
   for (let i = historyStart; i < history.length; i++) {
     const msg = history[i];
     const normalized = normalizeMessage(msg);
     const raw = msg as Record<string, unknown>;
+
     const marker = raw.__openclaw as Record<string, unknown> | undefined;
     if (marker && marker.kind === "compaction") {
       items.push({
@@ -504,24 +521,43 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
       continue;
     }
 
-    if (!props.showThinking && normalized.role.toLowerCase() === "toolresult") {
+    // Tool-result messages are always folded into their paired call card
+    // by extractToolCards — never render them as standalone bubbles.
+    const role = normalized.role.toLowerCase();
+    if (role === "toolresult" || role === "tool_result" || role === "tool") {
       continue;
     }
 
+    // If the live stream already has a card for every tool call in this
+    // assistant message, skip the raw history message — the stream card
+    // will be appended below with live output included.
+    if (streamedIds.size > 0 && normalized.role === "assistant" && Array.isArray(raw.content)) {
+      const toolUseIds = (raw.content as Record<string, unknown>[])
+        .filter((b) => {
+          const t = (typeof b.type === "string" ? b.type : "").toLowerCase();
+          return ["tool_use", "toolcall", "tooluse", "tool_call"].includes(t);
+        })
+        .map(
+          (b) =>
+            (typeof b.id === "string" ? b.id : null) ??
+            (typeof b.toolCallId === "string" ? b.toolCallId : null),
+        )
+        .filter((id): id is string => id !== null);
+      if (toolUseIds.length > 0 && toolUseIds.every((id) => streamedIds.has(id))) {
+        continue;
+      }
+    }
+
+    items.push({ kind: "message", key: messageKey(msg, i), message: msg });
+  }
+
+  // Append live stream cards (these already contain paired call+result content).
+  for (let i = 0; i < tools.length; i++) {
     items.push({
       kind: "message",
-      key: messageKey(msg, i),
-      message: msg,
+      key: messageKey(tools[i], i + history.length),
+      message: tools[i],
     });
-  }
-  if (props.showThinking) {
-    for (let i = 0; i < tools.length; i++) {
-      items.push({
-        kind: "message",
-        key: messageKey(tools[i], i + history.length),
-        message: tools[i],
-      });
-    }
   }
 
   if (props.stream !== null) {

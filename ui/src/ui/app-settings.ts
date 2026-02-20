@@ -26,6 +26,7 @@ import { loadProjects } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
 import { listPendingTaskReviews, loadRuntimeStatus, loadTasks } from "./controllers/tasks.ts";
+import { loadTeams } from "./controllers/teams.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -218,7 +219,10 @@ export async function refreshActiveTab(host: SettingsHost) {
     await loadSkills(host as unknown as OpenClawApp);
   }
   if (host.tab === "agents") {
-    await loadAgents(host as unknown as OpenClawApp);
+    await Promise.all([
+      loadAgents(host as unknown as OpenClawApp),
+      loadTeams(host as unknown as OpenClawApp),
+    ]);
     await loadConfig(host as unknown as OpenClawApp);
     const agentIds = host.agentsList?.agents?.map((entry) => entry.id) ?? [];
     if (agentIds.length > 0) {

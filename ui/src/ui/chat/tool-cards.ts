@@ -8,39 +8,54 @@ import { isToolResultMessage } from "./message-normalizer.ts";
 export function extractToolCards(message: unknown): ToolCard[] {
   const m = message as Record<string, unknown>;
   const content = normalizeContent(m.content);
-  const cards: ToolCard[] = [];
+
+  // Collect calls and results in document order, then pair them by position
+  // so each tool call renders as one card (call args + result output together).
+  const calls: Array<{ name: string; args: unknown }> = [];
+  const results: Array<{ name: string; text: string | undefined }> = [];
 
   for (const item of content) {
     const kind = (typeof item.type === "string" ? item.type : "").toLowerCase();
-    const isToolCall =
+    const isCall =
       ["toolcall", "tool_call", "tooluse", "tool_use"].includes(kind) ||
       (typeof item.name === "string" && item.arguments != null);
-    if (isToolCall) {
-      cards.push({
-        kind: "call",
+    const isResult = kind === "toolresult" || kind === "tool_result";
+
+    if (isCall) {
+      calls.push({
         name: (item.name as string) ?? "tool",
         args: coerceArgs(item.arguments ?? item.args),
+      });
+    } else if (isResult) {
+      results.push({
+        name: typeof item.name === "string" ? item.name : "tool",
+        text: extractToolText(item),
       });
     }
   }
 
-  for (const item of content) {
-    const kind = (typeof item.type === "string" ? item.type : "").toLowerCase();
-    if (kind !== "toolresult" && kind !== "tool_result") {
-      continue;
-    }
-    const text = extractToolText(item);
-    const name = typeof item.name === "string" ? item.name : "tool";
-    cards.push({ kind: "result", name, text });
-  }
-
-  if (isToolResultMessage(message) && !cards.some((card) => card.kind === "result")) {
+  // Fallback: whole-message tool result (e.g. role=toolresult with text content)
+  if (isToolResultMessage(message) && results.length === 0 && calls.length === 0) {
     const name =
       (typeof m.toolName === "string" && m.toolName) ||
       (typeof m.tool_name === "string" && m.tool_name) ||
       "tool";
-    const text = extractTextCached(message) ?? undefined;
-    cards.push({ kind: "result", name, text });
+    results.push({ name, text: extractTextCached(message) ?? undefined });
+  }
+
+  // Pair calls with results by position — produce one card per tool call.
+  const cards: ToolCard[] = [];
+  const len = Math.max(calls.length, results.length);
+  for (let i = 0; i < len; i++) {
+    const call = calls[i];
+    const result = results[i];
+    if (call) {
+      // Merge result text into the call card when available.
+      cards.push({ kind: "call", name: call.name, args: call.args, text: result?.text });
+    } else if (result) {
+      // Orphan result with no matching call (rare).
+      cards.push({ kind: "result", name: result.name, text: result.text });
+    }
   }
 
   return cards;
@@ -49,7 +64,23 @@ export function extractToolCards(message: unknown): ToolCard[] {
 export function renderToolCardSidebar(card: ToolCard, _onOpenSidebar?: (content: string) => void) {
   const display = resolveToolDisplay({ name: card.name, args: card.args });
   const detail = formatToolDetail(display);
-  const hasText = Boolean(card.text?.trim());
+  const hasOutput = Boolean(card.text?.trim());
+  const hasInput =
+    card.args != null &&
+    !(
+      typeof card.args === "object" &&
+      !Array.isArray(card.args) &&
+      Object.keys(card.args).length === 0
+    );
+  const inputJson = hasInput
+    ? (() => {
+        try {
+          return JSON.stringify(card.args, null, 2);
+        } catch {
+          return String(card.args);
+        }
+      })()
+    : null;
 
   return html`
     <details class="chat-tool-accordion">
@@ -63,10 +94,27 @@ export function renderToolCardSidebar(card: ToolCard, _onOpenSidebar?: (content:
       </summary>
       <div class="chat-tool-accordion__content">
         ${
-          hasText
-            ? html`<div class="chat-tool-accordion__output">${card.text}</div>`
+          hasInput
+            ? html`
+          <div class="chat-tool-accordion__section-label">Input</div>
+          <div class="chat-tool-accordion__input">${inputJson}</div>
+        `
+            : nothing
+        }
+        ${
+          hasOutput
+            ? html`
+          ${
+            hasInput
+              ? html`
+                  <div class="chat-tool-accordion__section-label">Output</div>
+                `
+              : nothing
+          }
+          <div class="chat-tool-accordion__output">${card.text}</div>
+        `
             : html`
-                <div class="chat-tool-accordion__empty">Completed without output</div>
+                <div class="chat-tool-accordion__empty">No output</div>
               `
         }
       </div>

@@ -35,6 +35,7 @@ import type {
   TaskReviewDto,
   TaskRuntimeStatusDto,
   TaskType,
+  TeamsListResult,
 } from "./types.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -327,6 +328,9 @@ export class OpenClawApp extends LitElement {
   @state() boardRuntimeStatus: TaskRuntimeStatusDto | null = null;
   @state() boardRuntimeLoading = false;
   @state() boardRuntimeError: string | null = null;
+  @state() teamsLoading = false;
+  @state() teamsList: TeamsListResult | null = null;
+  @state() teamsError: string | null = null;
   @state() boardOperatorPendingKey: string | null = null;
   @state() boardEscalations: TaskEscalationDto[] = [];
   @state() boardConfirmAction: {

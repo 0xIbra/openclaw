@@ -175,17 +175,26 @@ export async function getReplyFromConfig(
     agentId,
     sessionKey: sessionKey ?? ctx.SessionKey ?? "main",
     workspaceDir,
+    agentDir,
     config: cfg,
+    provider,
+    model,
     gatewayUrl: aresGatewayUrl,
     gatewayToken: cfg.gateway?.auth?.token,
   };
 
   const aresResult = await ares.processMessage(rawBody, aresContext);
   if (aresResult.ok) {
-    // Ares handled this message
     return { text: aresResult.message };
   }
-  // Ares didn't handle it (not an Ares request or error) - continue with normal agent flow
+  // If Ares recognised the request but failed, return the error to the user instead of
+  // silently falling through to the normal agent which has no context.
+  if (aresResult.error !== "Not an Ares request") {
+    return {
+      text: `⚠️ ${aresResult.error}${aresResult.suggestion ? `\n\n${aresResult.suggestion}` : ""}`,
+    };
+  }
+  // Not an Ares request — continue with normal agent flow
 
   await applyResetModelOverride({
     cfg,

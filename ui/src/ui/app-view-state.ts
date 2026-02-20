@@ -38,6 +38,7 @@ import type {
   TaskReviewDto,
   TaskRuntimeStatusDto,
   TaskType,
+  TeamsListResult,
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
@@ -223,6 +224,9 @@ export type AppViewState = {
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
   boardRuntimeLoading: boolean;
   boardRuntimeError: string | null;
+  teamsLoading: boolean;
+  teamsList: TeamsListResult | null;
+  teamsError: string | null;
   boardOperatorPendingKey: string | null;
   boardEscalations: TaskEscalationDto[];
   boardConfirmAction: {

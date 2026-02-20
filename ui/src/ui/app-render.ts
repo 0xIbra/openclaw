@@ -68,6 +68,7 @@ import {
   transitionTaskOptimistic,
   updateTask,
 } from "./controllers/tasks.ts";
+import { loadTeams } from "./controllers/teams.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
 import { renderAgents } from "./views/agents.ts";
@@ -848,6 +849,9 @@ export function renderApp(state: AppViewState) {
                 loading: state.agentsLoading,
                 error: state.agentsError,
                 agentsList: state.agentsList,
+                runtimeStatus: state.boardRuntimeStatus,
+                teamsList: state.teamsList,
+                teamsLoading: state.teamsLoading,
                 selectedAgentId: resolvedAgentId,
                 activePanel: state.agentsPanel,
                 configForm: configValue,
@@ -878,7 +882,7 @@ export function renderApp(state: AppViewState) {
                 agentSkillsAgentId: state.agentSkillsAgentId,
                 skillsFilter: state.skillsFilter,
                 onRefresh: async () => {
-                  await loadAgents(state);
+                  await Promise.all([loadAgents(state), loadTeams(state)]);
                   const agentIds = state.agentsList?.agents?.map((entry) => entry.id) ?? [];
                   if (agentIds.length > 0) {
                     void loadAgentIdentities(state, agentIds);

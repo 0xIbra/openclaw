@@ -5,6 +5,6 @@
  */
 
 export { ares, createAresRuntime } from "./runtime.js";
-export { classifyIntent, shouldHandleAsAres } from "./intents.js";
-export { buildAresPrompt, ARES_IDENTITY } from "./prompts.js";
-export type { AresIntent, AresContext, AresResult, AresRuntime } from "./types.js";
+export { shouldHandleAsAres } from "./intents.js";
+export { ARES_SYSTEM_PROMPT } from "./prompts.js";
+export type { AresContext, AresResult, AresRuntime } from "./types.js";
