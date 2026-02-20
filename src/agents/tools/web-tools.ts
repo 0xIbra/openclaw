@@ -1,10 +1,10 @@
 /**
  * Web Tools - Web Search and Web Fetch
  *
- * - web_search: Uses playwright-cli to search via DuckDuckGo/Google (free, no API key)
- * - web_fetch: Uses Jina AI Reader API (free tier: 20 RPM without key)
+ * - web_search: Uses playwright-cli in HEADED mode to search via DuckDuckGo/Google
+ * - web_fetch: Uses Jina Reader API (primary) with browser fallback for JS-heavy sites
  *
- * Jina AI Reader API: https://r.jina.ai/{URL}
+ * Both tools use headed browser mode to avoid captcha issues.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -17,6 +17,7 @@ const log = createSubsystemLogger("web-tools");
 
 const JINA_API_BASE = "https://r.jina.ai";
 const SESSION_ID = "openclaw-web-search";
+const FETCH_SESSION_ID = "openclaw-web-fetch";
 
 interface SearchResult {
   title: string;
@@ -24,123 +25,192 @@ interface SearchResult {
   snippet: string;
 }
 
-interface JinaFetchResponse {
-  url?: string;
-  title?: string;
-  content?: string;
-  timestamp?: string;
+interface FetchedContent {
+  url: string;
+  title: string;
+  content: string;
+  links: Array<{ text: string; href: string }>;
 }
 
 const WebFetchToolSchema = Type.Object({
   url: Type.String({ description: "URL to fetch content from" }),
-  format: Type.Optional(stringEnum(["markdown", "json", "text"])),
+  format: Type.Optional(stringEnum(["markdown", "text"])),
   maxChars: Type.Optional(
-    Type.Number({ description: "Maximum characters to return (default: 10000)" }),
+    Type.Number({ description: "Maximum characters to return (default: 15000)" }),
   ),
-  selector: Type.Optional(Type.String({ description: "CSS selector to extract specific content" })),
-  exclude: Type.Optional(
-    Type.String({ description: "CSS selectors to exclude (comma-separated)" }),
-  ),
-  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 30)" })),
-  images: Type.Optional(Type.Boolean({ description: "Include image descriptions" })),
-  links: Type.Optional(Type.Boolean({ description: "Include links summary" })),
-  noCache: Type.Optional(Type.Boolean({ description: "Bypass cached content" })),
+  scroll: Type.Optional(Type.Boolean({ description: "Scroll to load dynamic content" })),
+  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 60)" })),
 });
 
 const WebSearchToolSchema = Type.Object({
   query: Type.String({ description: "Search query" }),
   engine: Type.Optional(stringEnum(["duckduckgo", "google"])),
-  count: Type.Optional(Type.Number({ description: "Number of results (default: 5)" })),
+  count: Type.Optional(Type.Number({ description: "Number of results (default: 3, max: 5)" })),
+  maxChars: Type.Optional(
+    Type.Number({ description: "Maximum characters per result content (default: 8000)" }),
+  ),
 });
 
 /**
- * Build Jina Reader API URL with options
+ * Extract JSON from playwright-cli eval output
+ * The output format shows: ### Result\n"<escaped-json-string>"\n### Ran
+ * For non-JSON returns, it may just be the raw value in quotes
  */
-function buildJinaUrl(
-  url: string,
-  options: {
-    format?: string;
-    selector?: string;
-    exclude?: string;
-    timeout?: number;
-    images?: boolean;
-    links?: boolean;
-    noCache?: boolean;
-  },
-): string {
-  const params = new URLSearchParams();
-
-  if (options.format === "json") {
-    params.set("format", "json");
-  }
-  if (options.selector) {
-    params.set("selector", options.selector);
-  }
-  if (options.exclude) {
-    params.set("exclude", options.exclude);
-  }
-  if (options.timeout) {
-    params.set("timeout", String(options.timeout));
-  }
-  if (options.images) {
-    params.set("images", "summary");
-  }
-  if (options.links) {
-    params.set("links", "summary");
-  }
-  if (options.noCache) {
-    params.set("no-cache", "true");
+function extractJsonFromEvalOutput(output: string): string | null {
+  if (!output) {
+    return null;
   }
 
-  const queryString = params.toString();
-  return `${JINA_API_BASE}/${url}${queryString ? `?${queryString}` : ""}`;
+  // Look for Result section
+  const resultMatch = output.match(/### Result\s*\n"([\s\S]*?)"\s*\n### Ran/);
+  if (resultMatch) {
+    const content = resultMatch[1];
+
+    // Try to parse as escaped JSON string first
+    try {
+      const unescaped = JSON.parse('"' + content + '"');
+      // Verify it's valid JSON
+      JSON.parse(unescaped);
+      return unescaped;
+    } catch {
+      // Not valid escaped JSON, return as-is for further processing
+    }
+
+    // Check if content looks like JSON already (starts with [ or {)
+    const trimmed = content.trim();
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}"))
+    ) {
+      try {
+        JSON.parse(trimmed);
+        return trimmed;
+      } catch {
+        // Not valid JSON
+      }
+    }
+
+    // Return the raw string content
+    return content;
+  }
+
+  // Fallback: try to find raw JSON array/object in output
+  const jsonMatch = output.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      JSON.parse(jsonMatch[0]);
+      return jsonMatch[0];
+    } catch {
+      // Not valid JSON
+    }
+  }
+
+  return null;
 }
 
 /**
- * Fetch content from URL using Jina Reader API
+ * Build a JavaScript expression string that extracts search results from DuckDuckGo
  */
-async function fetchWithJina(
-  url: string,
-  options: {
-    format?: string;
-    selector?: string;
-    exclude?: string;
-    timeout?: number;
-    images?: boolean;
-    links?: boolean;
-    noCache?: boolean;
-  },
-): Promise<JinaFetchResponse> {
-  const jinaUrl = buildJinaUrl(url, options);
-
-  log.debug(`Fetching via Jina: ${jinaUrl}`);
-
-  const response = await fetch(jinaUrl, {
-    headers: {
-      Accept: "application/json, text/markdown, text/plain",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Jina API error: ${response.status} ${response.statusText}`);
-  }
-
-  // If JSON format requested, parse JSON
-  if (options.format === "json") {
-    return response.json() as Promise<JinaFetchResponse>;
-  }
-
-  // Otherwise return as markdown/text content
-  const content = await response.text();
-  return {
-    url,
-    content,
-  };
+function buildDuckDuckGoExtractor(count: number): string {
+  return `
+    (function() {
+      const results = [];
+      const seenUrls = new Set();
+      
+      const articles = document.querySelectorAll('article');
+      
+      for (const article of articles) {
+        const heading = article.querySelector('h2, h3');
+        if (!heading) continue;
+        
+        const title = heading.textContent?.trim();
+        if (!title || title.length < 3) continue;
+        
+        const link = article.querySelector('a[href^="http"]');
+        if (!link) continue;
+        
+        const url = link.href;
+        if (!url || seenUrls.has(url)) continue;
+        if (url.includes('duckduckgo.com') || url.includes('google.com')) continue;
+        
+        let snippet = '';
+        const snippetEl = article.querySelector('p');
+        if (snippetEl) {
+          snippet = snippetEl.textContent?.trim() || '';
+        }
+        
+        seenUrls.add(url);
+        results.push({ title, url, snippet });
+        
+        if (results.length >= ${count}) break;
+      }
+      
+      if (results.length === 0) {
+        const allLinks = document.querySelectorAll('a[href^="http"]');
+        for (const link of allLinks) {
+          const url = link.href;
+          if (!url || seenUrls.has(url)) continue;
+          if (url.includes('duckduckgo.com') || url.includes('google.com')) continue;
+          
+          const title = link.textContent?.trim();
+          if (!title || title.length < 10) continue;
+          
+          if (title.toLowerCase().includes('privacy') || 
+              title.toLowerCase().includes('settings') ||
+              title.toLowerCase().includes('about') && title.length < 15) continue;
+          
+          seenUrls.add(url);
+          results.push({ title, url, snippet: '' });
+          
+          if (results.length >= ${count}) break;
+        }
+      }
+      
+      return JSON.stringify(results);
+    })()
+  `;
 }
 
 /**
- * Search using playwright-cli (DuckDuckGo or Google)
- * Free, no API key required
+ * Build a JavaScript expression string that extracts search results from Google
+ */
+function buildGoogleExtractor(count: number): string {
+  return `
+    (function() {
+      const results = [];
+      const seenUrls = new Set();
+      
+      const containers = document.querySelectorAll('#search .g, #rso .g, #search .v7W49e, [data-async-context] .g');
+      
+      for (const container of containers) {
+        const linkEl = container.querySelector('a[jsname="UWckNb"], h3 a, a > h3, .yuRUbf a');
+        if (!linkEl) continue;
+        
+        const title = linkEl.textContent?.trim() || container.querySelector('h3')?.textContent?.trim();
+        const url = linkEl.href;
+        
+        if (!title || !url || seenUrls.has(url)) continue;
+        if (url.includes('google.com') || url.includes('/search?')) continue;
+        
+        let snippet = '';
+        const snippetEl = container.querySelector('.VwiC3b, .s3v94d, .lyLwlc, span:not([class])');
+        if (snippetEl) {
+          snippet = snippetEl.textContent?.trim() || '';
+        }
+        
+        seenUrls.add(url);
+        results.push({ title, url, snippet });
+        
+        if (results.length >= ${count}) break;
+      }
+      
+      return JSON.stringify(results);
+    })()
+  `;
+}
+
+/**
+ * Search using playwright-cli in HEADED mode (avoids captchas)
  */
 async function searchWithBrowser(
   query: string,
@@ -152,182 +222,482 @@ async function searchWithBrowser(
       ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
       : `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
 
-  log.debug(`Searching via ${engine}: ${query}`);
+  log.info(`Starting headed browser search via ${engine}: ${query}`);
 
-  // 1. Open browser and navigate
-  let result = await runPlaywrightCli("open", [searchUrl], { session: SESSION_ID, timeout: 30000 });
+  await runPlaywrightCli("close", [], { session: SESSION_ID, timeout: 5000 }).catch(() => {});
+
+  const openArgs = [searchUrl, "--headed", "--persistent"];
+  let result = await runPlaywrightCli("open", openArgs, { session: SESSION_ID, timeout: 60000 });
+
   if (result.exitCode !== 0) {
     throw new Error(`Failed to open browser: ${result.stderr || result.stdout}`);
   }
 
   try {
-    // 2. Wait for results to load
+    await new Promise((r) => setTimeout(r, 6000));
+    await handleConsentDialogs(engine);
     await new Promise((r) => setTimeout(r, 3000));
 
-    // 3. Get snapshot with element refs
-    result = await runPlaywrightCli("snapshot", [], { session: SESSION_ID, timeout: 10000 });
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to get snapshot: ${result.stderr || result.stdout}`);
+    const extractorScript =
+      engine === "google" ? buildGoogleExtractor(count) : buildDuckDuckGoExtractor(count);
+
+    log.debug(`Running extractor script for ${engine}`);
+    result = await runPlaywrightCli("eval", [extractorScript], {
+      session: SESSION_ID,
+      timeout: 15000,
+    });
+
+    log.debug(`Extractor result: exitCode=${result.exitCode}`);
+
+    if (result.exitCode === 0 && result.stdout) {
+      const jsonStr = extractJsonFromEvalOutput(result.stdout);
+      if (jsonStr) {
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            log.info(`Found ${parsed.length} results from ${engine}`);
+            return parsed.slice(0, count);
+          }
+        } catch (e) {
+          log.debug(`Failed to parse JSON: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
     }
 
-    // 4. Parse results from snapshot output
-    const results = parseSearchResults(result.stdout, query, engine, count);
-
-    return results;
+    log.debug(`Using fallback extraction for ${engine}`);
+    return await fallbackExtractResults(query, engine, count);
   } finally {
-    // 5. Close browser
-    await runPlaywrightCli("close", [], { session: SESSION_ID, timeout: 5000 });
+    await runPlaywrightCli("close", [], { session: SESSION_ID, timeout: 5000 }).catch(() => {});
   }
 }
 
 /**
- * Parse search results from playwright-cli snapshot output
+ * Handle consent dialogs and captchas
  */
-function parseSearchResults(
-  snapshotOutput: string,
+async function handleConsentDialogs(engine: string): Promise<void> {
+  if (engine === "google") {
+    const consentScript = `
+      (function() {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const text = btn.textContent?.toLowerCase() || '';
+          if (text.includes('reject all') || text.includes('accept all') || text.includes('i agree')) {
+            btn.click();
+            return 'clicked';
+          }
+        }
+        return 'no-consent';
+      })()
+    `;
+    await runPlaywrightCli("eval", [consentScript], { session: SESSION_ID, timeout: 5000 }).catch(
+      () => {},
+    );
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  if (engine === "duckduckgo") {
+    const dismissScript = `
+      (function() {
+        const closeButtons = document.querySelectorAll('[aria-label="Close"], .close, .dismiss');
+        for (const btn of closeButtons) {
+          btn.click();
+        }
+        return 'dismissed';
+      })()
+    `;
+    await runPlaywrightCli("eval", [dismissScript], { session: SESSION_ID, timeout: 5000 }).catch(
+      () => {},
+    );
+  }
+}
+
+/**
+ * Fallback extraction using generic link detection
+ */
+async function fallbackExtractResults(
   query: string,
   engine: string,
   count: number,
-): SearchResult[] {
+): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
-  const lines = snapshotOutput.split("\n");
 
-  // Look for link elements with URLs
-  const linkRegex = /-\s*link\s*'([^']+)'\s*\[ref=(\w+)\]/;
-  const headingRegex = /-\s*heading\s*'([^']+)'\s*\[ref=(\w+)\]/;
+  const fallbackScript = `
+    (function() {
+      const results = [];
+      const seenUrls = new Set();
+      
+      const links = document.querySelectorAll('a[href^="http"]');
+      
+      for (const link of links) {
+        const href = link.href;
+        const text = link.textContent?.trim() || '';
+        
+        if (!href || seenUrls.has(href)) continue;
+        if (href.includes('google.com') || href.includes('duckduckgo.com')) continue;
+        if (href.includes('gstatic.com') || href.includes('googlesyndication.com')) continue;
+        if (text.length < 10) continue;
+        if (text.toLowerCase().includes('privacy') || text.toLowerCase().includes('settings')) continue;
+        
+        seenUrls.add(href);
+        results.push({ title: text, url: href, snippet: '' });
+        
+        if (results.length >= ${count + 3}) break;
+      }
+      
+      return JSON.stringify(results.slice(0, ${count}));
+    })()
+  `;
 
-  const links: Array<{ title: string; ref: string }> = [];
-  const headings: Array<{ title: string; ref: string }> = [];
+  const result = await runPlaywrightCli("eval", [fallbackScript], {
+    session: SESSION_ID,
+    timeout: 15000,
+  });
 
-  for (const line of lines) {
-    const linkMatch = line.match(linkRegex);
-    if (linkMatch && !linkMatch[1].includes(engine === "google" ? "Google" : "DuckDuckGo")) {
-      links.push({ title: linkMatch[1], ref: linkMatch[2] });
-    }
-
-    const headingMatch = line.match(headingRegex);
-    if (headingMatch && headingMatch[1].length > 5) {
-      headings.push({ title: headingMatch[1], ref: headingMatch[2] });
+  if (result.exitCode === 0 && result.stdout) {
+    const jsonStr = extractJsonFromEvalOutput(result.stdout);
+    if (jsonStr) {
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+          results.push(...parsed);
+        }
+      } catch (e) {
+        log.debug(`Fallback extraction failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 
-  // Match headings with nearby links
-  for (let i = 0; i < headings.length && results.length < count; i++) {
-    const heading = headings[i];
-    // Find a link that appears close in the list
-    const nearbyLink = links.find((l) => {
-      const headingNum = parseInt(heading.ref.slice(1));
-      const linkNum = parseInt(l.ref.slice(1));
-      return Math.abs(headingNum - linkNum) < 10;
-    });
-
-    // Filter out navigation links
-    if (
-      heading.title.includes("Sign in") ||
-      heading.title.includes("Settings") ||
-      heading.title.includes("Privacy") ||
-      heading.title.length < 10
-    ) {
-      continue;
-    }
-
-    results.push({
-      title: heading.title,
-      url: nearbyLink?.title?.startsWith("http")
-        ? nearbyLink.title
-        : engine === "google"
-          ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
-          : `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
-      snippet: nearbyLink?.title || "",
-    });
-  }
-
-  // If no results found, return a basic result
-  if (results.length === 0) {
-    results.push({
-      title: `Search results for "${query}"`,
-      url:
-        engine === "google"
-          ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
-          : `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
-      snippet: `Searched via ${engine}`,
-    });
-  }
-
-  return results.slice(0, count);
+  return results.length > 0
+    ? results
+    : [
+        {
+          title: `Search results for "${query}"`,
+          url:
+            engine === "google"
+              ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
+              : `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+          snippet: `Search completed via ${engine}. No results could be extracted automatically.`,
+        },
+      ];
 }
 
 /**
- * Truncate content to max characters
+ * Fetch content from URL using headed browser (avoids captchas, handles JS)
  */
-function truncateContent(content: string, maxChars: number): string {
-  if (content.length <= maxChars) {
-    return content;
+async function fetchWithBrowser(
+  url: string,
+  options: {
+    maxChars: number;
+    scroll: boolean;
+    timeout: number;
+  },
+): Promise<FetchedContent> {
+  log.info(`Fetching content from ${url} with headed browser`);
+
+  await runPlaywrightCli("close", [], { session: FETCH_SESSION_ID, timeout: 5000 }).catch(() => {});
+
+  const openArgs = [url, "--headed", "--persistent"];
+  let result = await runPlaywrightCli("open", openArgs, {
+    session: FETCH_SESSION_ID,
+    timeout: 60000,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to open browser: ${result.stderr || result.stdout}`);
   }
-  return content.slice(0, maxChars) + "\n\n[Content truncated...]";
+
+  try {
+    await new Promise((r) => setTimeout(r, 6000));
+    await handleConsentDialogsForFetch();
+    await new Promise((r) => setTimeout(r, 3000));
+
+    if (options.scroll) {
+      await scrollPage();
+    }
+
+    return await extractPageContent(url, options.maxChars);
+  } finally {
+    await runPlaywrightCli("close", [], { session: FETCH_SESSION_ID, timeout: 5000 }).catch(
+      () => {},
+    );
+  }
 }
 
 /**
- * Create web fetch tool using Jina Reader API (free tier: 20 RPM)
+ * Handle consent dialogs for fetch operations
+ */
+async function handleConsentDialogsForFetch(): Promise<void> {
+  const consentScript = `
+    (function() {
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const text = btn.textContent?.toLowerCase() || '';
+        if (text.includes('accept') || text.includes('allow') || text.includes('agree') || text.includes('continue')) {
+          btn.click();
+          return 'clicked';
+        }
+      }
+      return 'no-consent';
+    })()
+  `;
+
+  await runPlaywrightCli("eval", [consentScript], {
+    session: FETCH_SESSION_ID,
+    timeout: 5000,
+  }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 2000));
+}
+
+/**
+ * Scroll page to load dynamic content
+ */
+async function scrollPage(): Promise<void> {
+  const scrollScript = `
+    (function() {
+      let scrolled = 0;
+      const step = window.innerHeight * 0.8;
+      
+      function doScroll() {
+        if (scrolled >= 5) return 'done';
+        window.scrollBy(0, step);
+        scrolled++;
+        setTimeout(doScroll, 1000);
+        return 'scrolling';
+      }
+      
+      doScroll();
+      return 'started';
+    })()
+  `;
+
+  await runPlaywrightCli("eval", [scrollScript], {
+    session: FETCH_SESSION_ID,
+    timeout: 10000,
+  }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 6000));
+}
+
+/**
+ * Extract page content
+ * We extract title directly and content separately to avoid JSON parsing issues with newlines
+ */
+async function extractPageContent(url: string, maxChars: number): Promise<FetchedContent> {
+  // Get title
+  const titleResult = await runPlaywrightCli("eval", ["document.title"], {
+    session: FETCH_SESSION_ID,
+    timeout: 10000,
+  });
+  let title = "Untitled";
+  if (titleResult.exitCode === 0 && titleResult.stdout) {
+    const extracted = extractJsonFromEvalOutput(titleResult.stdout);
+    if (extracted) {
+      title = extracted;
+    }
+  }
+
+  // Get content - Try multiple approaches for JavaScript-heavy sites
+  const contentScript = `
+    (function() {
+      // Remove script and style elements
+      const toRemove = document.querySelectorAll('script, style, nav, header, footer, aside, .sidebar, .advertisement, .ads, .cookie-banner, .consent-banner, iframe, noscript');
+      toRemove.forEach(el => el.remove());
+      
+      let content = '';
+      
+      // Try to find the main content area
+      const contentSelectors = [
+        'main article', 
+        'main',
+        '[role="main"]',
+        '.prose',
+        '.content',
+        '.main-content',
+        '#content',
+        '#main-content',
+        '.documentation',
+        '.docs-content',
+        '.markdown-body',
+        'article',
+        '.fern-docs-content',
+        '.docs',
+        '[class*="content"]',
+        'body'
+      ];
+      
+      for (const selector of contentSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          // Skip navigation elements that might be inside main
+          if (el.closest('nav') || el.classList.contains('nav')) continue;
+          
+          const text = el.textContent?.trim();
+          if (text && text.length > content.length && text.length > 200) {
+            content = text;
+          }
+        }
+      }
+      
+      // Fallback: combine text from paragraphs and headings
+      if (content.length < 500) {
+        const paragraphs = document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+        const texts = [];
+        for (const p of paragraphs) {
+          const text = p.textContent?.trim();
+          if (text && text.length > 10 && !text.startsWith('function') && !text.startsWith('var ')) {
+            texts.push(text);
+          }
+        }
+        content = texts.join('\\n\\n');
+      }
+      
+      // Clean up content for safe JSON transport
+      content = content
+        .replace(/\\\\/g, '\\\\\\\\')
+        .replace(/"/g, '\\\\"')
+        .replace(/\n/g, '\\\\n')
+        .replace(/\r/g, '\\\\r')
+        .replace(/\t/g, '\\\\t');
+      
+      return '"' + content.slice(0, 50000) + '"';
+    })()
+  `;
+
+  const contentResult = await runPlaywrightCli("eval", [contentScript], {
+    session: FETCH_SESSION_ID,
+    timeout: 20000,
+  });
+
+  if (contentResult.exitCode !== 0) {
+    throw new Error(`Failed to extract content: ${contentResult.stderr || "Unknown error"}`);
+  }
+
+  // Get links
+  const linksScript = `
+    (function() {
+      const links = [];
+      const seen = new Set();
+      const linkElements = document.querySelectorAll('a[href^="http"]');
+      
+      for (const link of linkElements) {
+        const text = link.textContent?.trim();
+        const href = link.href;
+        if (text && href && text.length > 2 && text.length < 100 && links.length < 20) {
+          // Skip duplicates
+          if (seen.has(href)) continue;
+          seen.add(href);
+          links.push({ text: text.replace(/"/g, '\\"'), href });
+        }
+      }
+      
+      return JSON.stringify(links);
+    })()
+  `;
+
+  const linksResult = await runPlaywrightCli("eval", [linksScript], {
+    session: FETCH_SESSION_ID,
+    timeout: 10000,
+  });
+  let links: Array<{ text: string; href: string }> = [];
+  if (linksResult.exitCode === 0 && linksResult.stdout) {
+    const jsonStr = extractJsonFromEvalOutput(linksResult.stdout);
+    if (jsonStr) {
+      try {
+        links = JSON.parse(jsonStr);
+      } catch {
+        links = [];
+      }
+    }
+  }
+
+  // Parse content
+  let content = "";
+  if (contentResult.stdout) {
+    const extracted = extractJsonFromEvalOutput(contentResult.stdout);
+    if (extracted) {
+      content = extracted;
+    }
+  }
+
+  // Clean up whitespace
+  content = content.replace(/\s+/g, " ").trim();
+
+  // Truncate if needed
+  const truncated = content.length > maxChars;
+  if (truncated) {
+    content = content.slice(0, maxChars) + "\n\n[Content truncated...]";
+  }
+
+  return {
+    url,
+    title,
+    content,
+    links,
+  };
+}
+
+/**
+ * Create web fetch tool using headed browser
  */
 export function createWebFetchTool(): AnyAgentTool {
   return {
     label: "Web Fetch",
     name: "web_fetch",
-    description: `Fetch and extract readable content from a URL using Jina AI Reader API.
+    description: `Fetch and extract readable content from a URL using a real headed browser.
 
-Converts any webpage to clean, LLM-friendly Markdown:
-- Strips ads, navigation, and clutter
-- Auto-captions images (as alt text)
-- Native PDF support
-- Fast extraction (no JavaScript execution)
+This tool browses to the URL in a visible browser window (headed mode) to avoid captchas and handle JavaScript-rendered content.
+
+Features:
+- Bypasses captchas and bot detection via headed browser
+- Handles JavaScript-rendered content (SPAs, dynamic sites)
+- Auto-dismissing common consent dialogs
+- Optional scrolling for lazy-loaded content
+- Returns clean text/markdown content
 
 Examples:
 - Fetch article: {"url": "https://example.com/article"}
-- Get specific section: {"url": "https://example.com", "selector": "article"}
-- Exclude elements: {"url": "https://example.com", "exclude": "nav,footer"}
-- JSON output: {"url": "https://example.com", "format": "json"}
+- Fetch with scrolling: {"url": "https://example.com/docs", "scroll": true}
+- Limit output: {"url": "https://example.com", "maxChars": 5000}
 
-Rate limits: 20 RPM (no API key required)
-Docs: https://jina.ai/reader`,
+Note: Uses headed browser mode which may show a browser window briefly.`,
     parameters: WebFetchToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const url = readStringParam(params, "url", { required: true });
       const format = readStringParam(params, "format") || "markdown";
-      const maxChars = readNumberParam(params, "maxChars") ?? 10000;
-      const selector = readStringParam(params, "selector");
-      const exclude = readStringParam(params, "exclude");
-      const timeout = readNumberParam(params, "timeout");
-      const images = params.images === true;
-      const links = params.links === true;
-      const noCache = params.noCache === true;
+      const maxChars = readNumberParam(params, "maxChars") ?? 15000;
+      const scroll = params.scroll === true;
+      const timeout = readNumberParam(params, "timeout") ?? 60;
 
       if (!url) {
         return jsonResult({ ok: false, error: "URL is required" });
       }
 
       try {
-        const result = await fetchWithJina(url, {
-          format,
-          selector,
-          exclude,
+        const result = await fetchWithBrowser(url, {
+          maxChars,
+          scroll,
           timeout,
-          images,
-          links,
-          noCache,
         });
 
-        const truncatedContent = result.content ? truncateContent(result.content, maxChars) : "";
+        let formattedContent = result.content;
+        if (format === "markdown") {
+          formattedContent = `# ${result.title}\n\n${result.content}`;
+
+          if (result.links.length > 0) {
+            formattedContent += "\n\n## Links on Page\n";
+            for (const link of result.links.slice(0, 10)) {
+              formattedContent += `- [${link.text}](${link.href})\n`;
+            }
+          }
+        }
 
         return jsonResult({
           ok: true,
-          url: result.url || url,
+          url: result.url,
           title: result.title,
-          content: truncatedContent,
-          timestamp: result.timestamp,
-          truncated: result.content ? result.content.length > maxChars : false,
-          originalLength: result.content?.length,
+          content: formattedContent,
+          linksFound: result.links.length,
+          truncated: result.content.length < (result.content + "").length,
         });
       } catch (error) {
         const errorText = error instanceof Error ? error.message : String(error);
@@ -343,42 +713,115 @@ Docs: https://jina.ai/reader`,
 }
 
 /**
- * Create web search tool using playwright-cli (DuckDuckGo/Google)
- * Free, no API key required
+ * Fetch content from URL using Jina Reader API
+ */
+async function fetchContentWithJina(url: string, maxChars: number): Promise<string> {
+  try {
+    const jinaUrl = `${JINA_API_BASE}/${url}`;
+    log.debug(`Fetching via Jina: ${jinaUrl}`);
+
+    const response = await fetch(jinaUrl, {
+      headers: {
+        Accept: "text/markdown, text/plain",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Jina API error: ${response.status}`);
+    }
+
+    const content = await response.text();
+
+    // Truncate if needed
+    if (content.length > maxChars) {
+      return content.slice(0, maxChars) + "\n\n[Content truncated...]";
+    }
+
+    return content;
+  } catch (error) {
+    log.debug(
+      `Jina fetch failed for ${url}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  }
+}
+
+interface SearchResultWithContent extends SearchResult {
+  content: string;
+}
+
+/**
+ * Search and fetch content from results using Jina Reader
+ */
+async function searchWithContent(
+  query: string,
+  engine: string,
+  count: number,
+  maxChars: number,
+): Promise<SearchResultWithContent[]> {
+  // First, get search results using browser
+  const searchResults = await searchWithBrowser(query, engine, count);
+
+  // Then fetch content for each result using Jina Reader
+  const resultsWithContent: SearchResultWithContent[] = [];
+
+  for (const result of searchResults) {
+    try {
+      log.info(`Fetching content from: ${result.url}`);
+      const content = await fetchContentWithJina(result.url, maxChars);
+      resultsWithContent.push({
+        ...result,
+        content,
+      });
+    } catch (error) {
+      log.debug(
+        `Failed to fetch content for ${result.url}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Include the result even without content, but indicate failure
+      resultsWithContent.push({
+        ...result,
+        content: `[Failed to fetch content: ${error instanceof Error ? error.message : String(error)}]`,
+      });
+    }
+  }
+
+  return resultsWithContent;
+}
+
+/**
+ * Create web search tool that returns markdown content from search results
  */
 export function createWebSearchTool(): AnyAgentTool {
   return {
     label: "Web Search",
     name: "web_search",
-    description: `Search the web using playwright-cli automation (DuckDuckGo or Google).
+    description: `Search the web and return markdown content from the results.
 
-Uses shell commands to perform searches - free, no API key required.
-Returns search results with titles and URLs.
+Uses browser automation in HEADED mode to avoid captchas, then fetches full content 
+from each result using Jina Reader API (free, no key needed).
+
+Returns search results with full markdown content suitable for reading and analysis.
 
 Examples:
-- Search DuckDuckGo: {"query": "OpenClaw documentation"}
-- Search Google: {"query": "TypeScript tips", "engine": "google"}
-- Get more results: {"query": "machine learning", "count": 10}
+- Search: {"query": "OpenClaw documentation"}
+- Search with more results: {"query": "machine learning", "count": 5}
+- Limit content length: {"query": "TypeScript tips", "maxChars": 5000}
 
-Note: Uses browser automation via playwright-cli commands:
-  playwright-cli open <url>
-  playwright-cli snapshot
-  playwright-cli close
-
-Requires: npm install -g @playwright/cli`,
+Note: Uses headed browser (shows window) to avoid captchas. Requires: npm install -g @playwright/cli`,
     parameters: WebSearchToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const engine = readStringParam(params, "engine") || "duckduckgo";
-      const count = readNumberParam(params, "count") ?? 5;
+      const count = Math.min(readNumberParam(params, "count") ?? 3, 5);
+      const maxChars = readNumberParam(params, "maxChars") ?? 8000;
 
       if (!query) {
         return jsonResult({ ok: false, error: "Query is required" });
       }
 
       try {
-        const results = await searchWithBrowser(query, engine, count);
+        const results = await searchWithContent(query, engine, count, maxChars);
 
         return jsonResult({
           ok: true,

@@ -10,12 +10,12 @@
 }
 
 /* Hide default marker in all browsers */
-.chat-tool-accordion>summary {
+.chat-tool-accordion > summary {
   list-style: none;
   /* Firefox/Standard */
 }
 
-.chat-tool-accordion>summary::-webkit-details-marker {
+.chat-tool-accordion > summary::-webkit-details-marker {
   display: none;
   /* WebKit */
 }
@@ -180,7 +180,6 @@
 }
 
 @keyframes reading-pulse {
-
   0%,
   60%,
   100% {
