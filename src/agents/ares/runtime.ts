@@ -367,6 +367,172 @@ async function executeTaskList(
   }
 }
 
+async function executeTaskGet(
+  intent: Extract<AresIntent, { type: "task_get" }>,
+  context: AresContext,
+): Promise<AresResult> {
+  try {
+    const result = await callGatewayTool<{
+      task: {
+        id: string;
+        title: string;
+        description?: string;
+        status: string;
+        priority: string;
+        assignedAgentId: string | null;
+        type: string;
+        createdAtMs: number;
+        updatedAtMs?: number;
+      } | null;
+    }>(
+      "tasks.get",
+      { gatewayUrl: context.gatewayUrl, gatewayToken: context.gatewayToken },
+      { id: intent.id },
+    );
+
+    if (!result.task) {
+      return {
+        ok: false,
+        error: `Task "${intent.id}" not found.`,
+        suggestion: "Check the task ID or list tasks with `List tasks`",
+      };
+    }
+
+    const task = result.task;
+    const lines = [
+      `**${task.title}**`,
+      `ID: \`${task.id}\``,
+      `Status: ${task.status}`,
+      `Priority: ${task.priority}`,
+      `Type: ${task.type}`,
+      `Assignee: ${task.assignedAgentId ?? "unassigned"}`,
+    ];
+
+    if (task.description) {
+      lines.push("", `**Description:**`, task.description);
+    }
+
+    return { ok: true, message: lines.join("\n"), data: result };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Failed to get task: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function executeTaskAssign(
+  intent: Extract<AresIntent, { type: "task_assign" }>,
+  context: AresContext,
+): Promise<AresResult> {
+  try {
+    const result = await callGatewayTool<{
+      task: {
+        id: string;
+        title: string;
+        assignedAgentId: string | null;
+        status: string;
+      };
+    }>(
+      "tasks.update",
+      { gatewayUrl: context.gatewayUrl, gatewayToken: context.gatewayToken },
+      {
+        id: intent.taskId,
+        assignedAgentId: intent.assignedAgentId,
+      },
+    );
+
+    return {
+      ok: true,
+      message: `Assigned task "${result.task.title}" (${result.task.id}) to ${intent.assignedAgentId}.`,
+      data: result,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("not found")) {
+      return {
+        ok: false,
+        error: `Task "${intent.taskId}" not found.`,
+        suggestion: "Check the task ID or list tasks with `List tasks`",
+      };
+    }
+    return { ok: false, error: `Failed to assign task: ${message}` };
+  }
+}
+
+async function executeProjectGet(
+  intent: Extract<AresIntent, { type: "project_get" }>,
+  context: AresContext,
+): Promise<AresResult> {
+  try {
+    let project: {
+      id: string;
+      name: string;
+      description?: string;
+      repoRoot?: string;
+    } | null = null;
+
+    if (intent.id) {
+      const result = await callGatewayTool<{
+        project: {
+          id: string;
+          name: string;
+          description?: string;
+          repoRoot?: string;
+        } | null;
+      }>(
+        "projects.get",
+        { gatewayUrl: context.gatewayUrl, gatewayToken: context.gatewayToken },
+        { id: intent.id },
+      );
+      project = result.project;
+    } else if (intent.name) {
+      // Try to find by name using list
+      const result = await callGatewayTool<{
+        projects: Array<{
+          id: string;
+          name: string;
+          description?: string;
+          repoRoot?: string;
+        }>;
+      }>(
+        "projects.list",
+        { gatewayUrl: context.gatewayUrl, gatewayToken: context.gatewayToken },
+        {},
+      );
+      project =
+        result.projects.find((p) => p.name.toLowerCase() === intent.name?.toLowerCase()) ?? null;
+    } else {
+      return { ok: false, error: "Need either project ID or name to look up." };
+    }
+
+    if (!project) {
+      return {
+        ok: false,
+        error: `Project not found.`,
+        suggestion: "Check the name or list all projects with `List projects`",
+      };
+    }
+
+    const lines = [`**${project.name}**`, `ID: \`${project.id}\``];
+
+    if (project.description) {
+      lines.push(`Description: ${project.description}`);
+    }
+
+    if (project.repoRoot) {
+      lines.push(`Repo: ${project.repoRoot}`);
+    }
+
+    return { ok: true, message: lines.join("\n"), data: { project } };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Failed to get project: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 async function executeProjectCreate(
   intent: Extract<AresIntent, { type: "project_create" }>,
   context: AresContext,
@@ -568,18 +734,15 @@ async function executeIntent(intent: AresIntent, context: AresContext): Promise<
     case "task_list":
       return executeTaskList(intent, context);
     case "task_get":
-      // TODO: Implement
-      return { ok: false, error: "task_get not yet implemented" };
+      return executeTaskGet(intent, context);
     case "task_assign":
-      // TODO: Implement
-      return { ok: false, error: "task_assign not yet implemented" };
+      return executeTaskAssign(intent, context);
     case "project_create":
       return executeProjectCreate(intent, context);
     case "project_list":
       return executeProjectList(context);
     case "project_get":
-      // TODO: Implement
-      return { ok: false, error: "project_get not yet implemented" };
+      return executeProjectGet(intent, context);
     case "status_overview":
       return executeStatusOverview(context);
     case "help":

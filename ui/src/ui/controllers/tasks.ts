@@ -479,6 +479,34 @@ function patchTaskInList(state: Pick<TasksState, "boardTasks">, task: TaskDto) {
   state.boardTasks = next;
 }
 
+export function patchTaskClaimedFromEvent(
+  state: Pick<TasksState, "boardTasks" | "boardRuntimeStatus">,
+  payload: unknown,
+) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const task = (payload as { task?: TaskDto }).task;
+  const claim = (payload as { claim?: { agentId?: string; claimedAtMs?: number } }).claim;
+  if (!task || typeof task.id !== "string") {
+    return;
+  }
+  patchTaskInList(state, task);
+  // Update runtime status if worker exists to reflect new claimed task
+  const runtime = state.boardRuntimeStatus;
+  if (runtime && claim?.agentId) {
+    const workers = [...runtime.workers];
+    const index = workers.findIndex((entry) => entry.agentId === claim.agentId);
+    if (index >= 0) {
+      const worker = workers[index];
+      if (worker) {
+        workers[index] = { ...worker, state: "running" as const, updatedAtMs: Date.now() };
+        state.boardRuntimeStatus = { ...runtime, workers, updatedAtMs: Date.now() };
+      }
+    }
+  }
+}
+
 function patchWorkerStatus(
   state: Pick<TasksState, "boardRuntimeStatus">,
   worker: TaskRuntimeStatusDto["workers"][number],

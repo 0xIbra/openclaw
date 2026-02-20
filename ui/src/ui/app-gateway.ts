@@ -36,6 +36,7 @@ import { patchProjectFromEvent } from "./controllers/projects.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import {
   patchTaskAttemptFromEvent,
+  patchTaskClaimedFromEvent,
   patchTaskDecompositionFromEvent,
   patchTaskFromEvent,
   patchTaskReviewFromEvent,
@@ -283,6 +284,11 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "tasks.changed") {
     patchTaskFromEvent(host, evt.payload);
+    return;
+  }
+
+  if (evt.event === "tasks.claimed") {
+    patchTaskClaimedFromEvent(host, evt.payload);
     return;
   }
 
