@@ -154,8 +154,8 @@ export function createOpenClawTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
-    createWebSearchTool(),
-    createWebFetchTool(),
+    createWebSearchTool({ agentId: options?.agentSessionKey }),
+    createWebFetchTool({ agentId: options?.agentSessionKey }),
     ...(imageTool ? [imageTool] : []),
   ];
 

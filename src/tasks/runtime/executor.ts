@@ -1,6 +1,6 @@
 import type { TaskExecutionResult } from "./types.js";
 
-function parseJsonReportBlock(text: string): Record<string, unknown> | null {
+export function parseJsonReportBlock(text: string): Record<string, unknown> | null {
   const fenced = [...text.matchAll(/```json\s*([\s\S]*?)```/gi)];
   for (let i = fenced.length - 1; i >= 0; i -= 1) {
     const raw = fenced[i]?.[1]?.trim();

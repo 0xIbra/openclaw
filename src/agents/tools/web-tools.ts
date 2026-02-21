@@ -16,8 +16,14 @@ import { type AnyAgentTool, jsonResult, readStringParam, readNumberParam } from 
 const log = createSubsystemLogger("web-tools");
 
 const JINA_API_BASE = "https://r.jina.ai";
-const SESSION_ID = "openclaw-web-search";
-const FETCH_SESSION_ID = "openclaw-web-fetch";
+
+function makeSearchSessionId(agentId?: string): string {
+  return agentId ? `openclaw-web-search-${agentId}` : "openclaw-web-search";
+}
+
+function makeFetchSessionId(agentId?: string): string {
+  return agentId ? `openclaw-web-fetch-${agentId}` : "openclaw-web-fetch";
+}
 
 interface SearchResult {
   title: string;
@@ -216,6 +222,7 @@ async function searchWithBrowser(
   query: string,
   engine: string,
   count: number,
+  sessionId: string,
 ): Promise<SearchResult[]> {
   const searchUrl =
     engine === "google"
@@ -224,10 +231,10 @@ async function searchWithBrowser(
 
   log.info(`Starting headed browser search via ${engine}: ${query}`);
 
-  await runPlaywrightCli("close", [], { session: SESSION_ID, timeout: 5000 }).catch(() => {});
+  await runPlaywrightCli("close", [], { session: sessionId, timeout: 5000 }).catch(() => {});
 
   const openArgs = [searchUrl, "--headed", "--persistent"];
-  let result = await runPlaywrightCli("open", openArgs, { session: SESSION_ID, timeout: 60000 });
+  let result = await runPlaywrightCli("open", openArgs, { session: sessionId, timeout: 60000 });
 
   if (result.exitCode !== 0) {
     throw new Error(`Failed to open browser: ${result.stderr || result.stdout}`);
@@ -235,7 +242,7 @@ async function searchWithBrowser(
 
   try {
     await new Promise((r) => setTimeout(r, 6000));
-    await handleConsentDialogs(engine);
+    await handleConsentDialogs(engine, sessionId);
     await new Promise((r) => setTimeout(r, 3000));
 
     const extractorScript =
@@ -243,7 +250,7 @@ async function searchWithBrowser(
 
     log.debug(`Running extractor script for ${engine}`);
     result = await runPlaywrightCli("eval", [extractorScript], {
-      session: SESSION_ID,
+      session: sessionId,
       timeout: 15000,
     });
 
@@ -265,16 +272,16 @@ async function searchWithBrowser(
     }
 
     log.debug(`Using fallback extraction for ${engine}`);
-    return await fallbackExtractResults(query, engine, count);
+    return await fallbackExtractResults(query, engine, count, sessionId);
   } finally {
-    await runPlaywrightCli("close", [], { session: SESSION_ID, timeout: 5000 }).catch(() => {});
+    await runPlaywrightCli("close", [], { session: sessionId, timeout: 5000 }).catch(() => {});
   }
 }
 
 /**
  * Handle consent dialogs and captchas
  */
-async function handleConsentDialogs(engine: string): Promise<void> {
+async function handleConsentDialogs(engine: string, sessionId: string): Promise<void> {
   if (engine === "google") {
     const consentScript = `
       (function() {
@@ -289,7 +296,7 @@ async function handleConsentDialogs(engine: string): Promise<void> {
         return 'no-consent';
       })()
     `;
-    await runPlaywrightCli("eval", [consentScript], { session: SESSION_ID, timeout: 5000 }).catch(
+    await runPlaywrightCli("eval", [consentScript], { session: sessionId, timeout: 5000 }).catch(
       () => {},
     );
     await new Promise((r) => setTimeout(r, 2000));
@@ -305,7 +312,7 @@ async function handleConsentDialogs(engine: string): Promise<void> {
         return 'dismissed';
       })()
     `;
-    await runPlaywrightCli("eval", [dismissScript], { session: SESSION_ID, timeout: 5000 }).catch(
+    await runPlaywrightCli("eval", [dismissScript], { session: sessionId, timeout: 5000 }).catch(
       () => {},
     );
   }
@@ -318,6 +325,7 @@ async function fallbackExtractResults(
   query: string,
   engine: string,
   count: number,
+  sessionId: string,
 ): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
 
@@ -349,7 +357,7 @@ async function fallbackExtractResults(
   `;
 
   const result = await runPlaywrightCli("eval", [fallbackScript], {
-    session: SESSION_ID,
+    session: sessionId,
     timeout: 15000,
   });
 
@@ -390,15 +398,17 @@ async function fetchWithBrowser(
     maxChars: number;
     scroll: boolean;
     timeout: number;
+    sessionId: string;
   },
 ): Promise<FetchedContent> {
+  const sessionId = options.sessionId;
   log.info(`Fetching content from ${url} with headed browser`);
 
-  await runPlaywrightCli("close", [], { session: FETCH_SESSION_ID, timeout: 5000 }).catch(() => {});
+  await runPlaywrightCli("close", [], { session: sessionId, timeout: 5000 }).catch(() => {});
 
   const openArgs = [url, "--headed", "--persistent"];
   let result = await runPlaywrightCli("open", openArgs, {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 60000,
   });
 
@@ -408,25 +418,23 @@ async function fetchWithBrowser(
 
   try {
     await new Promise((r) => setTimeout(r, 6000));
-    await handleConsentDialogsForFetch();
+    await handleConsentDialogsForFetch(sessionId);
     await new Promise((r) => setTimeout(r, 3000));
 
     if (options.scroll) {
-      await scrollPage();
+      await scrollPage(sessionId);
     }
 
-    return await extractPageContent(url, options.maxChars);
+    return await extractPageContent(url, options.maxChars, sessionId);
   } finally {
-    await runPlaywrightCli("close", [], { session: FETCH_SESSION_ID, timeout: 5000 }).catch(
-      () => {},
-    );
+    await runPlaywrightCli("close", [], { session: sessionId, timeout: 5000 }).catch(() => {});
   }
 }
 
 /**
  * Handle consent dialogs for fetch operations
  */
-async function handleConsentDialogsForFetch(): Promise<void> {
+async function handleConsentDialogsForFetch(sessionId: string): Promise<void> {
   const consentScript = `
     (function() {
       const buttons = document.querySelectorAll('button');
@@ -442,7 +450,7 @@ async function handleConsentDialogsForFetch(): Promise<void> {
   `;
 
   await runPlaywrightCli("eval", [consentScript], {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 5000,
   }).catch(() => {});
   await new Promise((r) => setTimeout(r, 2000));
@@ -451,7 +459,7 @@ async function handleConsentDialogsForFetch(): Promise<void> {
 /**
  * Scroll page to load dynamic content
  */
-async function scrollPage(): Promise<void> {
+async function scrollPage(sessionId: string): Promise<void> {
   const scrollScript = `
     (function() {
       let scrolled = 0;
@@ -471,7 +479,7 @@ async function scrollPage(): Promise<void> {
   `;
 
   await runPlaywrightCli("eval", [scrollScript], {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 10000,
   }).catch(() => {});
   await new Promise((r) => setTimeout(r, 6000));
@@ -481,10 +489,14 @@ async function scrollPage(): Promise<void> {
  * Extract page content
  * We extract title directly and content separately to avoid JSON parsing issues with newlines
  */
-async function extractPageContent(url: string, maxChars: number): Promise<FetchedContent> {
+async function extractPageContent(
+  url: string,
+  maxChars: number,
+  sessionId: string,
+): Promise<FetchedContent> {
   // Get title
   const titleResult = await runPlaywrightCli("eval", ["document.title"], {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 10000,
   });
   let title = "Untitled";
@@ -563,7 +575,7 @@ async function extractPageContent(url: string, maxChars: number): Promise<Fetche
   `;
 
   const contentResult = await runPlaywrightCli("eval", [contentScript], {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 20000,
   });
 
@@ -594,7 +606,7 @@ async function extractPageContent(url: string, maxChars: number): Promise<Fetche
   `;
 
   const linksResult = await runPlaywrightCli("eval", [linksScript], {
-    session: FETCH_SESSION_ID,
+    session: sessionId,
     timeout: 10000,
   });
   let links: Array<{ text: string; href: string }> = [];
@@ -638,7 +650,8 @@ async function extractPageContent(url: string, maxChars: number): Promise<Fetche
 /**
  * Create web fetch tool using headed browser
  */
-export function createWebFetchTool(): AnyAgentTool {
+export function createWebFetchTool(options?: { agentId?: string }): AnyAgentTool {
+  const fetchSessionId = makeFetchSessionId(options?.agentId);
   return {
     label: "Web Fetch",
     name: "web_fetch",
@@ -677,6 +690,7 @@ Note: Uses headed browser mode which may show a browser window briefly.`,
           maxChars,
           scroll,
           timeout,
+          sessionId: fetchSessionId,
         });
 
         let formattedContent = result.content;
@@ -758,9 +772,10 @@ async function searchWithContent(
   engine: string,
   count: number,
   maxChars: number,
+  sessionId: string,
 ): Promise<SearchResultWithContent[]> {
   // First, get search results using browser
-  const searchResults = await searchWithBrowser(query, engine, count);
+  const searchResults = await searchWithBrowser(query, engine, count, sessionId);
 
   // Then fetch content for each result using Jina Reader
   const resultsWithContent: SearchResultWithContent[] = [];
@@ -791,7 +806,8 @@ async function searchWithContent(
 /**
  * Create web search tool that returns markdown content from search results
  */
-export function createWebSearchTool(): AnyAgentTool {
+export function createWebSearchTool(options?: { agentId?: string }): AnyAgentTool {
+  const searchSessionId = makeSearchSessionId(options?.agentId);
   return {
     label: "Web Search",
     name: "web_search",
@@ -821,7 +837,7 @@ Note: Uses headed browser (shows window) to avoid captchas. Requires: npm instal
       }
 
       try {
-        const results = await searchWithContent(query, engine, count, maxChars);
+        const results = await searchWithContent(query, engine, count, maxChars, searchSessionId);
 
         return jsonResult({
           ok: true,

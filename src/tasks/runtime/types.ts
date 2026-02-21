@@ -78,6 +78,23 @@ export interface TaskDecomposer {
   decompose(input: TaskDecomposerInput): Promise<TaskDecomposerResult>;
 }
 
+export type TaskQuestionAnswererInput = {
+  leadAgentId: string;
+  teamId: string;
+  teamName: string;
+  requesterAgentId: string;
+  questionBody: string;
+  taskId: string | null;
+};
+
+export type TaskQuestionAnswererResult = {
+  answer: string;
+};
+
+export interface TaskQuestionAnswerer {
+  answer(input: TaskQuestionAnswererInput): Promise<TaskQuestionAnswererResult>;
+}
+
 export type TaskWorkerStatus = {
   agentId: string;
   teamIds: string[];
@@ -198,6 +215,7 @@ export type TaskLeadOptions = {
   teamName: string;
   leadAgentId: string;
   decomposer?: TaskDecomposer;
+  questionAnswerer?: TaskQuestionAnswerer;
   pollMs?: number;
   busVisibilityTimeoutMs?: number;
   questionReminderMs?: number;
@@ -223,6 +241,8 @@ export type TaskLeadSupervisorOptions = {
   taskService: TaskService;
   config?: OpenClawConfig;
   createLead?: (options: TaskLeadOptions) => TaskLead;
+  /** Use the LLM-driven lead instead of the deterministic lead. */
+  useLLMLead?: boolean;
   reconcileIntervalMs?: number;
   onLeadEvent?: (event: TaskLeadEvent) => void;
   onEscalation?: (event: Record<string, unknown>) => void;

@@ -6,6 +6,7 @@
  */
 
 import type { OpenClawConfig } from "../../config/config.js";
+import type { TaskService } from "../service.js";
 import type { TaskExecutionInput, TaskExecutionResult, TaskExecutor } from "./types.js";
 import { createBrowserExecutor, isBrowserTask } from "../../browser-cli/index.js";
 import { TASK_WORKER_EXECUTION_TIMEOUT_MS } from "./defaults.js";
@@ -19,6 +20,7 @@ export interface CompositeTaskExecutorOptions {
   timeoutMs?: number;
   /** Force headless mode (useful in CI/server environments) */
   headless?: boolean;
+  taskService?: TaskService;
 }
 
 /**
@@ -32,6 +34,7 @@ export function createCompositeTaskExecutor(options: CompositeTaskExecutorOption
     config: options.config,
     loadCurrentConfig: options.loadCurrentConfig,
     timeoutMs: options.timeoutMs ?? TASK_WORKER_EXECUTION_TIMEOUT_MS,
+    taskService: options.taskService,
   });
 
   // Create the browser executor for web automation tasks
@@ -67,6 +70,7 @@ export function createCompositeTaskExecutorFactory(params?: {
   loadCurrentConfig?: () => OpenClawConfig;
   timeoutMs?: number;
   headless?: boolean;
+  taskService?: TaskService;
 }): (agentId: string) => TaskExecutor {
   return (agentId: string) =>
     createCompositeTaskExecutor({
@@ -76,5 +80,6 @@ export function createCompositeTaskExecutorFactory(params?: {
       loadCurrentConfig: params?.loadCurrentConfig,
       timeoutMs: params?.timeoutMs,
       headless: params?.headless,
+      taskService: params?.taskService,
     });
 }

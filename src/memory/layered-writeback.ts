@@ -48,7 +48,7 @@ function toMarkdown(params: {
     "",
     `- scope: ${params.scope.kind}:${params.scope.id}`,
     `- eventType: ${params.entry.eventType}`,
-    `- taskId: ${params.entry.taskId}`,
+    `- taskId: ${params.entry.taskId ?? "none"}`,
     `- attemptId: ${params.entry.attemptId ?? "none"}`,
     `- dedupeKey: ${params.dedupeKey}`,
     `- occurredAtMs: ${params.occurredAtMs}`,
@@ -94,7 +94,7 @@ export async function writeLayeredMemoryEntry(params: {
   LAYERED_WRITEBACK_METRICS.events += 1;
   const occurredAtMs = params.entry.occurredAtMs ?? Date.now();
   const rootDir = resolveLayeredMemoryRoot(params.cfg);
-  const dedupeKey = `${params.entry.taskId}:${params.entry.attemptId ?? "none"}:${params.entry.eventType}`;
+  const dedupeKey = `${params.entry.taskId ?? "no-task"}:${params.entry.attemptId ?? "none"}:${params.entry.eventType}`;
   const entryId = hashText(dedupeKey);
   const scopes = resolveLayeredScopes({
     cfg: params.cfg,

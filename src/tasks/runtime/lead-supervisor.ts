@@ -6,8 +6,9 @@ import type {
   TaskLeadSupervisor,
   TaskLeadSupervisorOptions,
 } from "./types.js";
-import { TASK_LEAD_RECONCILE_MS } from "./defaults.js";
+import { TASK_LEAD_RECONCILE_MS, TASK_LEAD_UNHEALTHY_THRESHOLD_MS } from "./defaults.js";
 import { createTaskLead } from "./lead.js";
+import { createLLMTaskLead } from "./llm-lead.js";
 
 type TeamLeadBinding = {
   teamId: string;
@@ -38,7 +39,10 @@ export function createTaskLeadSupervisor(options: TaskLeadSupervisorOptions): Ta
     1_000,
     Math.floor(options.reconcileIntervalMs ?? TASK_LEAD_RECONCILE_MS),
   );
-  const createLead = options.createLead ?? ((opts: TaskLeadOptions) => createTaskLead(opts));
+  const defaultLeadFactory = options.useLLMLead
+    ? (opts: TaskLeadOptions) => createLLMTaskLead(opts)
+    : (opts: TaskLeadOptions) => createTaskLead(opts);
+  const createLead = options.createLead ?? defaultLeadFactory;
   const leads = new Map<string, TaskLead>();
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   let reconcilePromise: Promise<void> | null = null;
@@ -77,6 +81,25 @@ export function createTaskLeadSupervisor(options: TaskLeadSupervisorOptions): Ta
         reason: "started",
         lead: lead.getStatus(),
       });
+    }
+
+    // Health check: stop stale leads so they get recreated next cycle
+    for (const [teamId, lead] of leads.entries()) {
+      const leadStatus = lead.getStatus();
+      // Skip leads that haven't had a chance to poll yet
+      if (leadStatus.lastPolledAtMs == null) {
+        continue;
+      }
+      const staleMs = Date.now() - leadStatus.lastPolledAtMs;
+      if (leadStatus.state === "paused" || staleMs > TASK_LEAD_UNHEALTHY_THRESHOLD_MS) {
+        await lead.stop();
+        emitLead({
+          reason: "stopped",
+          lead: lead.getStatus(),
+        });
+        leads.delete(teamId);
+        // Will be recreated on next reconcile cycle
+      }
     }
 
     const activeTeamIds = new Set(active.keys());

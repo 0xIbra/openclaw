@@ -59,7 +59,7 @@ describe("task sqlite v4 migration", () => {
     const db = openTaskDatabase({ dbPath });
     initializeTaskSchema(db);
 
-    expect(getTaskSchemaVersion(db)).toBe(5);
+    expect(getTaskSchemaVersion(db)).toBe(6);
 
     const questionThreadsTable = db
       .prepare(
@@ -82,7 +82,7 @@ describe("task sqlite v4 migration", () => {
     expect(preserved?.task_id).toBe(task.id);
 
     initializeTaskSchema(db);
-    expect(getTaskSchemaVersion(db)).toBe(5);
+    expect(getTaskSchemaVersion(db)).toBe(6);
 
     db.close();
   });

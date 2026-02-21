@@ -149,6 +149,31 @@ function readBooleanSetting(
   return typeof current === "boolean" ? current : fallback;
 }
 
+function deepMergeSettings(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      typeof result[key] === "object" &&
+      result[key] !== null &&
+      !Array.isArray(result[key])
+    ) {
+      result[key] = deepMergeSettings(
+        result[key] as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export class TaskService {
   constructor(
     private readonly store: TaskStore,
@@ -175,6 +200,11 @@ export class TaskService {
         name,
         description: normalizeOptionalString(input.description),
         repoRoot: normalizeOptionalString(input.repoRoot),
+        buildCmd: input.buildCmd !== undefined ? input.buildCmd?.trim() || null : undefined,
+        testCmd: input.testCmd !== undefined ? input.testCmd?.trim() || null : undefined,
+        lintCmd: input.lintCmd !== undefined ? input.lintCmd?.trim() || null : undefined,
+        language: input.language !== undefined ? input.language?.trim() || null : undefined,
+        framework: input.framework !== undefined ? input.framework?.trim() || null : undefined,
       },
       this.now(),
     );
@@ -207,6 +237,11 @@ export class TaskService {
         name: nextName,
         description: normalizeOptionalString(input.description),
         repoRoot: normalizeOptionalString(input.repoRoot),
+        buildCmd: input.buildCmd !== undefined ? input.buildCmd?.trim() || null : undefined,
+        testCmd: input.testCmd !== undefined ? input.testCmd?.trim() || null : undefined,
+        lintCmd: input.lintCmd !== undefined ? input.lintCmd?.trim() || null : undefined,
+        language: input.language !== undefined ? input.language?.trim() || null : undefined,
+        framework: input.framework !== undefined ? input.framework?.trim() || null : undefined,
       },
       this.now(),
     );
@@ -322,6 +357,19 @@ export class TaskService {
       );
     }
 
+    return updated;
+  }
+
+  updateTeamSettings(teamId: string, patch: Record<string, unknown>): TeamRecord {
+    const existing = this.store.getTeam(teamId);
+    if (!existing) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
+    const merged = deepMergeSettings(existing.settings ?? {}, patch);
+    const updated = this.store.updateTeam({ id: teamId, settings: merged }, this.now());
+    if (!updated) {
+      throw new TaskServiceError("not_found", `team not found: ${teamId}`);
+    }
     return updated;
   }
 
@@ -827,6 +875,7 @@ export class TaskService {
     return this.store.claimNextTask({
       agentId,
       teamId: normalizeOptionalNullableString(input.teamId),
+      teamIds: input.teamIds ?? [],
       leaseDurationMs,
     });
   }

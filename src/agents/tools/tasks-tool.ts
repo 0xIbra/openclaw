@@ -12,6 +12,8 @@ const TASKS_ACTIONS = [
   "decompose",
   "reviewListPending",
   "reviewDecide",
+  "askQuestion",
+  "publishMessage",
 ] as const;
 const TASK_TYPES = [
   "feature",
@@ -84,13 +86,21 @@ const TasksToolSchema = Type.Object({
   query: Type.Optional(Type.String()),
   tag: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Number()),
+  // Bus message fields (for askQuestion / publishMessage)
+  senderAgentId: Type.Optional(Type.String()),
+  receiverAgentId: Type.Optional(Type.String()),
+  taskId: Type.Optional(Type.String()),
+  messageType: Type.Optional(Type.String()),
+  subject: Type.Optional(Type.String()),
+  body: Type.Optional(Type.String()),
 });
 
 export function createTasksTool(): AnyAgentTool {
   return {
     label: "Tasks",
     name: "tasks",
-    description: "List/create/get/update/transition tasks inside projects.",
+    description:
+      "List/create/get/update/transition tasks inside projects. Use askQuestion(senderAgentId, receiverAgentId, body, taskId?) to send a question to your team lead. Use publishMessage(senderAgentId, receiverAgentId, messageType, body) to send arbitrary bus messages.",
     parameters: TasksToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -292,6 +302,39 @@ export function createTasksTool(): AnyAgentTool {
             decision,
             actor,
             reason: readStringParam(params, "reason", { trim: false }) || undefined,
+          }),
+        );
+      }
+
+      if (action === "askQuestion") {
+        const senderAgentId = readStringParam(params, "senderAgentId", { required: true });
+        const receiverAgentId = readStringParam(params, "receiverAgentId", { required: true });
+        const body = readStringParam(params, "body", { required: true });
+        return jsonResult(
+          await callGatewayTool("bus.publish", gatewayOpts, {
+            senderAgentId,
+            receiverAgentId,
+            taskId: readStringParam(params, "taskId") || undefined,
+            messageType: "question",
+            subject: readStringParam(params, "subject") || "question",
+            body,
+          }),
+        );
+      }
+
+      if (action === "publishMessage") {
+        const senderAgentId = readStringParam(params, "senderAgentId", { required: true });
+        const receiverAgentId = readStringParam(params, "receiverAgentId", { required: true });
+        const messageType = readStringParam(params, "messageType", { required: true });
+        const body = readStringParam(params, "body", { required: true });
+        return jsonResult(
+          await callGatewayTool("bus.publish", gatewayOpts, {
+            senderAgentId,
+            receiverAgentId,
+            taskId: readStringParam(params, "taskId") || undefined,
+            messageType,
+            subject: readStringParam(params, "subject") || undefined,
+            body,
           }),
         );
       }

@@ -136,4 +136,67 @@ describe("gateway teams handlers", () => {
 
     fixture.taskService.close();
   });
+
+  it("updateSettings deep-merges into existing settings", async () => {
+    const fixture = await createFixture();
+
+    // Create a team with initial settings
+    await callMethod({
+      handler: teamsHandlers["teams.create"],
+      method: "teams.create",
+      payload: { name: "Settings-Team", leadAgentId: "lead-1" },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    const teamId = (fixture.respond.mock.calls[0]?.[1] as { team?: { id?: string } } | undefined)
+      ?.team?.id as string;
+
+    // Set initial settings via update
+    fixture.respond.mockClear();
+    await callMethod({
+      handler: teamsHandlers["teams.update"],
+      method: "teams.update",
+      payload: {
+        id: teamId,
+        settings: {
+          review: { requireHumanApproval: false, autoApproveOnCleanResult: true },
+          decomposition: { auto: true, maxSubtasks: 10 },
+        },
+      },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    expect(fixture.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
+
+    // Now use updateSettings to merge a partial change
+    fixture.respond.mockClear();
+    await callMethod({
+      handler: teamsHandlers["teams.updateSettings"],
+      method: "teams.updateSettings",
+      payload: {
+        id: teamId,
+        settings: { review: { requireHumanApproval: true } },
+      },
+      respond: fixture.respond,
+      context: fixture.context,
+    });
+    expect(fixture.respond).toHaveBeenCalledWith(true, expect.anything(), undefined);
+
+    const result = fixture.respond.mock.calls[0]?.[1] as {
+      team?: { settings?: Record<string, unknown> };
+    };
+    const settings = result?.team?.settings ?? {};
+    const review = settings.review as Record<string, unknown>;
+    const decomposition = settings.decomposition as Record<string, unknown>;
+
+    // review.requireHumanApproval was merged to true
+    expect(review.requireHumanApproval).toBe(true);
+    // review.autoApproveOnCleanResult was preserved
+    expect(review.autoApproveOnCleanResult).toBe(true);
+    // decomposition was not touched
+    expect(decomposition.auto).toBe(true);
+    expect(decomposition.maxSubtasks).toBe(10);
+
+    fixture.taskService.close();
+  });
 });

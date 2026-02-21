@@ -1,4 +1,7 @@
 import type { GatewayRequestHandlers } from "./types.js";
+import { loadConfig } from "../../config/io.js";
+import { detectProjectProfile } from "../../tasks/project-detector.js";
+import { indexProjectIntoMemory } from "../../tasks/runtime/project-indexer.js";
 import { TaskServiceError } from "../../tasks/service.js";
 import {
   ErrorCodes,
@@ -38,6 +41,37 @@ export const projectsHandlers: GatewayRequestHandlers = {
       const project = context.taskService.createProject(params);
       context.broadcast("projects.changed", { reason: "created", project });
       respond(true, { project }, undefined);
+
+      // Best-effort async: auto-detect tooling, then index codebase into memory
+      if (project.repoRoot) {
+        void (async () => {
+          try {
+            const profile = await detectProjectProfile(project.repoRoot!);
+            const patch: Record<string, string | null | undefined> = {};
+            if (!project.language && profile.language !== "unknown") {
+              patch.language = profile.language;
+            }
+            if (!project.framework && profile.framework) {
+              patch.framework = profile.framework;
+            }
+            if (!project.buildCmd && profile.buildCmd) {
+              patch.buildCmd = profile.buildCmd;
+            }
+            if (!project.testCmd && profile.testCmd) {
+              patch.testCmd = profile.testCmd;
+            }
+            if (!project.lintCmd && profile.lintCmd) {
+              patch.lintCmd = profile.lintCmd;
+            }
+            if (Object.keys(patch).length > 0) {
+              context.taskService.updateProject({ id: project.id, ...patch });
+            }
+          } catch {
+            // best-effort detection
+          }
+          await indexProjectIntoMemory(loadConfig(), project).catch(() => {});
+        })();
+      }
     } catch (err) {
       respond(false, undefined, toGatewayTaskError(err));
     }

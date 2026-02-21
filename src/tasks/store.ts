@@ -60,6 +60,13 @@ type ProjectRow = {
   description: string | null;
   repo_root: string | null;
   primary_team_id: string | null;
+  build_cmd: string | null;
+  test_cmd: string | null;
+  lint_cmd: string | null;
+  language: string | null;
+  framework: string | null;
+  indexed_at_ms: number | null;
+  index_status: string | null;
   created_at_ms: number;
   updated_at_ms: number;
   archived_at_ms: number | null;
@@ -283,6 +290,13 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
     name: row.name,
     description: row.description ?? undefined,
     repoRoot: row.repo_root ?? undefined,
+    buildCmd: row.build_cmd ?? null,
+    testCmd: row.test_cmd ?? null,
+    lintCmd: row.lint_cmd ?? null,
+    language: row.language ?? null,
+    framework: row.framework ?? null,
+    indexedAtMs: row.indexed_at_ms == null ? null : Number(row.indexed_at_ms),
+    indexStatus: (row.index_status as ProjectRecord["indexStatus"]) ?? null,
     createdAtMs: Number(row.created_at_ms),
     updatedAtMs: Number(row.updated_at_ms),
     archivedAtMs: row.archived_at_ms == null ? null : Number(row.archived_at_ms),
@@ -644,11 +658,28 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
         name,
         description,
         repo_root,
+        build_cmd,
+        test_cmd,
+        lint_cmd,
+        language,
+        framework,
         created_at_ms,
         updated_at_ms,
         archived_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-    ).run(id, input.name, input.description ?? null, input.repoRoot ?? null, nowMs, nowMs);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    ).run(
+      id,
+      input.name,
+      input.description ?? null,
+      input.repoRoot ?? null,
+      input.buildCmd ?? null,
+      input.testCmd ?? null,
+      input.lintCmd ?? null,
+      input.language ?? null,
+      input.framework ?? null,
+      nowMs,
+      nowMs,
+    );
 
     if (input.repoRoot !== undefined) {
       syncProjectPrimaryRepoFromRepoRoot(id, input.repoRoot ?? null, nowMs);
@@ -671,6 +702,30 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
     if (input.repoRoot !== undefined) {
       sets.push("repo_root = ?");
       values.push(input.repoRoot || null);
+    }
+    if (input.buildCmd !== undefined) {
+      sets.push("build_cmd = ?");
+      values.push(input.buildCmd ?? null);
+    }
+    if (input.testCmd !== undefined) {
+      sets.push("test_cmd = ?");
+      values.push(input.testCmd ?? null);
+    }
+    if (input.lintCmd !== undefined) {
+      sets.push("lint_cmd = ?");
+      values.push(input.lintCmd ?? null);
+    }
+    if (input.language !== undefined) {
+      sets.push("language = ?");
+      values.push(input.language ?? null);
+    }
+    if (input.framework !== undefined) {
+      sets.push("framework = ?");
+      values.push(input.framework ?? null);
+    }
+    if (input.indexStatus !== undefined) {
+      sets.push("index_status = ?");
+      values.push(input.indexStatus ?? null);
     }
     if (sets.length === 0) {
       return getProject(input.id);
@@ -1589,6 +1644,7 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
   function claimNextTask(input: TaskClaimNextInput): TaskClaimLeaseResult | null {
     const nowMs = Date.now();
     const leaseDurationMs = Math.max(1, Math.floor(input.leaseDurationMs ?? 45_000));
+    const teamIdsJson = JSON.stringify(input.teamIds ?? []);
 
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -1599,9 +1655,18 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
           `SELECT t.id, t.team_id
            FROM tasks t
            JOIN projects p ON p.id = t.project_id
-           WHERE t.status = 'assigned'
-             AND t.assigned_agent_id = ?
-             AND p.archived_at_ms IS NULL
+           WHERE p.archived_at_ms IS NULL
+             AND (
+               (t.status = 'assigned' AND t.assigned_agent_id = @agentId)
+               OR (
+                 t.status = 'backlog'
+                 AND t.assigned_agent_id IS NULL
+                 AND (
+                   @teamIdsJson = '[]'
+                   OR t.team_id IN (SELECT value FROM json_each(@teamIdsJson))
+                 )
+               )
+             )
              AND NOT EXISTS (
                SELECT 1
                FROM task_dependencies d
@@ -1631,7 +1696,9 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
              t.updated_at_ms ASC
            LIMIT 1`,
         )
-        .get(input.agentId) as { id?: string; team_id?: string | null } | undefined;
+        .get({ agentId: input.agentId, teamIdsJson }) as
+        | { id?: string; team_id?: string | null }
+        | undefined;
 
       if (!candidate?.id) {
         db.exec("COMMIT");

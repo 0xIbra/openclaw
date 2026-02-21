@@ -49,7 +49,7 @@ describe("task sqlite v5 migration", () => {
     const db = openTaskDatabase({ dbPath });
     initializeTaskSchema(db);
 
-    expect(getTaskSchemaVersion(db)).toBe(5);
+    expect(getTaskSchemaVersion(db)).toBe(6);
 
     const decompositionTable = db
       .prepare(
@@ -89,7 +89,7 @@ describe("task sqlite v5 migration", () => {
     expect(indexNames.has("idx_task_review_records_status_updated")).toBe(true);
 
     initializeTaskSchema(db);
-    expect(getTaskSchemaVersion(db)).toBe(5);
+    expect(getTaskSchemaVersion(db)).toBe(6);
 
     db.close();
   });

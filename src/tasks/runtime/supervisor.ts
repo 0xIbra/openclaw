@@ -6,7 +6,8 @@ import type {
   TaskWorkerOptions,
   TaskWorkerStatus,
 } from "./types.js";
-import { TASK_WORKER_RECONCILE_MS } from "./defaults.js";
+import { TASK_WORKER_RECONCILE_MS, TASK_WORKER_UNHEALTHY_THRESHOLD_MS } from "./defaults.js";
+import { isWorkerHealthy } from "./health.js";
 import { createTaskWorker } from "./worker.js";
 
 function sortedUnique(values: string[]): string[] {
@@ -95,6 +96,45 @@ export function createTaskRuntimeSupervisor(
       workers.set(agentId, worker);
       worker.start();
       emit({ reason: "started", worker: worker.getStatus() });
+    }
+
+    // Health check: stop unhealthy workers so they get recreated next cycle
+    for (const [agentId, worker] of workers.entries()) {
+      if (pausedAgents.has(agentId)) {
+        continue;
+      }
+      const workerStatus = worker.getStatus();
+      if (
+        !isWorkerHealthy(workerStatus, {
+          unhealthyThresholdMs: TASK_WORKER_UNHEALTHY_THRESHOLD_MS,
+        })
+      ) {
+        await worker.stop();
+        emit({ reason: "stopped", worker: workerStatus });
+        workers.delete(agentId);
+
+        // Notify team lead(s) about the restart
+        for (const teamId of workerStatus.teamIds) {
+          try {
+            const team = options.taskService.getTeam(teamId);
+            const leadAgentId = team?.leadAgentId?.trim();
+            if (leadAgentId) {
+              options.taskService.publishBusMessage({
+                senderAgentId: "supervisor",
+                receiverAgentId: leadAgentId,
+                taskId: workerStatus.currentTaskId,
+                messageType: "directive",
+                subject: "Worker restarted due to unhealthy state",
+                body: `Worker ${agentId} was restarted. Orphaned tasks will be re-claimed.`,
+                payload: { agentId, reason: "unhealthy" },
+                dedupeKey: `supervisor-restart:${agentId}:${Date.now()}`,
+              });
+            }
+          } catch {
+            // best-effort notification
+          }
+        }
+      }
     }
 
     const activeAgents = new Set(active.keys());

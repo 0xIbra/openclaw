@@ -33,8 +33,8 @@ export type LayeredMemoryScopeRef = {
 };
 
 export type LayeredMemoryWriteEntry = {
-  eventType: "attempt:finished" | "attempt:failed" | "question:resolved";
-  taskId: string;
+  eventType: "attempt:finished" | "attempt:failed" | "question:resolved" | "project:indexed";
+  taskId?: string | null;
   attemptId?: string | null;
   summary: string;
   errorText?: string | null;

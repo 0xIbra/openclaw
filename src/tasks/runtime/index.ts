@@ -1,5 +1,6 @@
 export * from "./defaults.js";
 export * from "./executor.js";
+export * from "./executor-context.js";
 export * from "./executor-embedded.js";
 export * from "./executor-composite.js";
 export * from "./types.js";
@@ -7,3 +8,6 @@ export * from "./worker.js";
 export * from "./supervisor.js";
 export * from "./lead.js";
 export * from "./lead-supervisor.js";
+export * from "./question-answerer.js";
+export * from "./project-indexer.js";
+export * from "./llm-lead.js";

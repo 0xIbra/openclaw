@@ -13,7 +13,12 @@ import {
   TASK_WORKER_IDLE_POLL_MS,
   TASK_WORKER_LEASE_DURATION_MS,
   TASK_WORKER_MAX_BACKOFF_MS,
+  TASK_WORKER_MAX_MEMORY_MB,
+  TASK_WORKER_MEMORY_CHECK_INTERVAL_MS,
+  TASK_WORKER_MAX_CONSECUTIVE_ERRORS,
+  TASK_WORKER_ERROR_RESET_INTERVAL_MS,
 } from "./defaults.js";
+import { createHealthMonitor } from "./health.js";
 
 function uniqSorted(values: string[]): string[] {
   return [...new Set(values.map((entry) => entry.trim()).filter(Boolean))].toSorted();
@@ -60,6 +65,14 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
   const maxBackoffMs = Math.max(1, Math.floor(options.maxBackoffMs ?? TASK_WORKER_MAX_BACKOFF_MS));
   const now = options.now ?? (() => Date.now());
   const sleep = options.sleep ?? sleepWithAbort;
+  const health = createHealthMonitor({
+    maxMemoryMb: options.maxMemoryMb ?? TASK_WORKER_MAX_MEMORY_MB,
+    checkIntervalMs: options.memoryCheckIntervalMs ?? TASK_WORKER_MEMORY_CHECK_INTERVAL_MS,
+    maxConsecutiveErrors: options.maxConsecutiveErrors ?? TASK_WORKER_MAX_CONSECUTIVE_ERRORS,
+    errorResetIntervalMs: options.errorResetIntervalMs ?? TASK_WORKER_ERROR_RESET_INTERVAL_MS,
+    onMemoryLimit: options.onMemoryLimit,
+    onConsecutiveErrors: options.onConsecutiveErrors,
+  });
   let stopController: AbortController | null = null;
   let loopPromise: Promise<void> | null = null;
 
@@ -320,6 +333,7 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
       }
 
       if (execution.status === "success") {
+        health.recordSuccess();
         const finished = options.taskService.finishAttempt({
           taskId: started.task.id,
           claimId: claim.id,
@@ -357,6 +371,7 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           },
         });
       } else {
+        const { shouldRestart } = health.recordError(execution.errorText ?? "unknown error");
         const failed = options.taskService.failAttempt({
           taskId: started.task.id,
           claimId: claim.id,
@@ -406,6 +421,18 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
           } catch {
             // Requeue is best-effort; failed task state is already persisted.
           }
+        }
+
+        // Too many consecutive errors → abort the run loop so the supervisor can restart us
+        if (shouldRestart) {
+          updateStatus({
+            state: "unhealthy",
+            currentTaskId: null,
+            errorStreak: status.errorStreak + 1,
+            lastError: execution.errorText ?? "consecutive error limit reached",
+          });
+          stopController?.abort();
+          return;
         }
       }
 
@@ -459,6 +486,7 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
         updateStatus({ state: "claiming" });
         const claim = options.taskService.claimNextTask({
           agentId: options.agentId,
+          teamIds: status.teamIds,
           leaseDurationMs,
         });
         if (!claim) {
@@ -496,8 +524,10 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
       if (loopPromise) {
         return;
       }
+      health.start();
       stopController = new AbortController();
       loopPromise = runLoop(stopController.signal).finally(() => {
+        health.stop();
         stopController = null;
         loopPromise = null;
       });
@@ -509,8 +539,9 @@ export function createTaskWorker(options: TaskWorkerOptions): TaskWorker {
       if (loopPromise) {
         await loopPromise;
       }
+      health.stop();
     },
-    getStatus: () => ({ ...status, teamIds: [...status.teamIds] }),
+    getStatus: () => ({ ...status, ...health.getStatus(), teamIds: [...status.teamIds] }),
     setTeamIds: (teamIds: string[]) => {
       const normalized = uniqSorted(teamIds);
       if (normalized.join("|") === status.teamIds.join("|")) {

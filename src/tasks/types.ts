@@ -76,6 +76,13 @@ export type ProjectRecord = {
   name: string;
   description?: string;
   repoRoot?: string;
+  buildCmd?: string | null;
+  testCmd?: string | null;
+  lintCmd?: string | null;
+  language?: string | null;
+  framework?: string | null;
+  indexedAtMs?: number | null;
+  indexStatus?: "pending" | "indexing" | "indexed" | "failed" | null;
   createdAtMs: number;
   updatedAtMs: number;
   archivedAtMs: number | null;
@@ -178,6 +185,11 @@ export type ProjectCreateInput = {
   name: string;
   description?: string;
   repoRoot?: string;
+  buildCmd?: string | null;
+  testCmd?: string | null;
+  lintCmd?: string | null;
+  language?: string | null;
+  framework?: string | null;
 };
 
 export type ProjectUpdateInput = {
@@ -185,6 +197,12 @@ export type ProjectUpdateInput = {
   name?: string;
   description?: string;
   repoRoot?: string;
+  buildCmd?: string | null;
+  testCmd?: string | null;
+  lintCmd?: string | null;
+  language?: string | null;
+  framework?: string | null;
+  indexStatus?: "pending" | "indexing" | "indexed" | "failed" | null;
 };
 
 export type TeamCreateInput = {
@@ -281,6 +299,7 @@ export type TaskClaimLeaseResult = {
 export type TaskClaimNextInput = {
   agentId: string;
   teamId?: string | null;
+  teamIds?: string[] | null;
   leaseDurationMs?: number;
 };
 

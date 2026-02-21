@@ -18,3 +18,5 @@ export const TASK_LEAD_MESSAGE_VISIBILITY_TIMEOUT_MS = 30_000;
 export const TASK_LEAD_QUESTION_REMINDER_MS = 120_000;
 export const TASK_LEAD_QUESTION_ESCALATION_MS = 600_000;
 export const TASK_LEAD_RECONCILE_MS = 10_000;
+export const DECOMPOSER_RETRY_COOLDOWN_MS = 5 * 60_000; // 5 min cooldown after failed decomposition
+export const TASK_LEAD_UNHEALTHY_THRESHOLD_MS = 120_000; // 2 min no poll

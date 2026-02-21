@@ -201,6 +201,7 @@ import type {
   TeamsMembersAddParamsSchema,
   TeamsMembersRemoveParamsSchema,
   TeamsUpdateParamsSchema,
+  TeamsUpdateSettingsParamsSchema,
 } from "./teams.js";
 import type {
   WizardCancelParamsSchema,
@@ -386,6 +387,7 @@ export type TeamsCreateParams = Static<typeof TeamsCreateParamsSchema>;
 export type TeamsGetParams = Static<typeof TeamsGetParamsSchema>;
 export type TeamsGetByNameParams = Static<typeof TeamsGetByNameParamsSchema>;
 export type TeamsUpdateParams = Static<typeof TeamsUpdateParamsSchema>;
+export type TeamsUpdateSettingsParams = Static<typeof TeamsUpdateSettingsParamsSchema>;
 export type TeamsDeleteParams = Static<typeof TeamsDeleteParamsSchema>;
 export type TeamsMembersAddParams = Static<typeof TeamsMembersAddParamsSchema>;
 export type TeamsMembersRemoveParams = Static<typeof TeamsMembersRemoveParamsSchema>;

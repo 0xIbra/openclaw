@@ -342,6 +342,8 @@ import {
   TeamsMembersRemoveParamsSchema,
   type TeamsUpdateParams,
   TeamsUpdateParamsSchema,
+  type TeamsUpdateSettingsParams,
+  TeamsUpdateSettingsParamsSchema,
   type UpdateRunParams,
   UpdateRunParamsSchema,
   type WakeParams,
@@ -567,6 +569,9 @@ export const validateTeamsGetByNameParams = ajv.compile<TeamsGetByNameParams>(
   TeamsGetByNameParamsSchema,
 );
 export const validateTeamsUpdateParams = ajv.compile<TeamsUpdateParams>(TeamsUpdateParamsSchema);
+export const validateTeamsUpdateSettingsParams = ajv.compile<TeamsUpdateSettingsParams>(
+  TeamsUpdateSettingsParamsSchema,
+);
 export const validateTeamsDeleteParams = ajv.compile<TeamsDeleteParams>(TeamsDeleteParamsSchema);
 export const validateTeamsMembersAddParams = ajv.compile<TeamsMembersAddParams>(
   TeamsMembersAddParamsSchema,
@@ -766,6 +771,7 @@ export {
   TeamsGetParamsSchema,
   TeamsGetByNameParamsSchema,
   TeamsUpdateParamsSchema,
+  TeamsUpdateSettingsParamsSchema,
   TeamsDeleteParamsSchema,
   TeamsMembersAddParamsSchema,
   TeamsMembersRemoveParamsSchema,
@@ -937,6 +943,7 @@ export type {
   TeamsGetParams,
   TeamsGetByNameParams,
   TeamsUpdateParams,
+  TeamsUpdateSettingsParams,
   TeamsDeleteParams,
   TeamsMembersAddParams,
   TeamsMembersRemoveParams,

@@ -15,14 +15,7 @@ async function runFetch(url: string, readability: boolean) {
   if (!readability) {
     throw new Error("Basic extraction removed. Set readability=true or enable Firecrawl.");
   }
-  const tool = createWebFetchTool({
-    config: {
-      tools: {
-        web: { fetch: { readability, cacheTtlMinutes: 0, firecrawl: { enabled: false } } },
-      },
-    },
-    sandboxed: false,
-  });
+  const tool = createWebFetchTool();
   if (!tool) {
     throw new Error("web_fetch tool is disabled");
   }

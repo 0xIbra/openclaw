@@ -77,6 +77,14 @@ export const TeamsUpdateParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TeamsUpdateSettingsParamsSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    settings: Type.Record(Type.String(), Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
+
 export const TeamsDeleteParamsSchema = Type.Object(
   {
     id: NonEmptyString,

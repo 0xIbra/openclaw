@@ -6,6 +6,7 @@ import { searchLayeredMemory, resolveLayeredScopes } from "../../memory/layered-
 import { writeLayeredMemoryEntry } from "../../memory/layered-writeback.js";
 import { createTaskDecomposer } from "./decomposer.js";
 import {
+  DECOMPOSER_RETRY_COOLDOWN_MS,
   TASK_LEAD_MESSAGE_VISIBILITY_TIMEOUT_MS,
   TASK_LEAD_POLL_MS,
   TASK_LEAD_QUESTION_ESCALATION_MS,
@@ -74,26 +75,37 @@ function hasExplicitBooleanTrue(record: Record<string, unknown>, keys: string[])
   return false;
 }
 
-function attemptLooksClean(attempt: TaskAttemptRecord | null): boolean {
+export function attemptLooksClean(attempt: TaskAttemptRecord | null): boolean {
   if (!attempt) {
     return false;
   }
   if (attempt.status.toLowerCase() !== "completed") {
     return false;
   }
-  if (attempt.errorText && attempt.errorText.trim()) {
+  if (attempt.errorText?.trim()) {
     return false;
   }
 
+  // Check explicit boolean fields (set by Phase 2 executor)
   const testsPassed =
     hasExplicitBooleanTrue(attempt.testOutcome, ["testsPassed", "testPassed", "pass"]) ||
-    hasExplicitBooleanTrue(attempt.metrics, ["testsPassed", "testPassed"]);
-  const lintPassed =
-    hasExplicitBooleanTrue(attempt.commandOutcome, ["lintPassed", "lintOk"]) ||
-    hasExplicitBooleanTrue(attempt.metrics, ["lintPassed", "lintOk"]) ||
-    hasExplicitBooleanTrue(attempt.testOutcome, ["lintPassed", "lintOk"]);
+    hasExplicitBooleanTrue(attempt.metrics, ["testsPassed"]);
 
-  return testsPassed && lintPassed;
+  // Must pass tests — this is the hard requirement.
+  if (!testsPassed) {
+    return false;
+  }
+
+  // Build and lint are best-effort: only fail if explicitly set to false.
+  // Some tasks (research, review, etc.) have no build/lint step at all.
+  if (attempt.commandOutcome["buildPassed"] === false) {
+    return false;
+  }
+  if (attempt.commandOutcome["lintPassed"] === false) {
+    return false;
+  }
+
+  return true;
 }
 
 export function createTaskLead(options: TaskLeadOptions): TaskLead {
@@ -155,16 +167,17 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
   ) => {
     options.taskService.publishBusMessage({
       senderAgentId: options.leadAgentId,
-      receiverAgentId: requesterAgentId,
+      receiverAgentId: options.leadAgentId,
       taskId: null,
       correlationId: threadId,
       replyToMessageId: questionMessageId,
-      messageType: "context:provide",
-      subject: "Question reminder",
-      body: "Please provide an update or answer so execution can continue.",
+      messageType: "reminder",
+      subject: "Outstanding question",
+      body: `You have an outstanding question from ${requesterAgentId}. Please respond.`,
       payload: {
         threadId,
         reminder: true,
+        requesterAgentId,
       },
       dedupeKey: `lead-reminder:${threadId}`,
     });
@@ -226,7 +239,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
     }
   };
 
-  const processInboundMessages = () => {
+  const processInboundMessages = async () => {
     const deliveries = options.taskService.pullBusMessages({
       receiverAgentId: options.leadAgentId,
       maxMessages: 20,
@@ -243,7 +256,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
 
       try {
         if (message.messageType === "question" || message.messageType === "blocker") {
-          options.taskService.openQuestionThread({
+          const thread = options.taskService.openQuestionThread({
             teamId: options.teamId,
             taskId: message.taskId,
             leadAgentId: options.leadAgentId,
@@ -252,6 +265,38 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
             reminderDelayMs: questionReminderMs,
             escalationDelayMs: questionEscalationMs,
           });
+
+          // Attempt to auto-answer the question via LLM (best-effort)
+          if (options.questionAnswerer) {
+            try {
+              const result = await options.questionAnswerer.answer({
+                leadAgentId: options.leadAgentId,
+                teamId: options.teamId,
+                teamName: options.teamName,
+                requesterAgentId: message.senderAgentId,
+                questionBody: message.body,
+                taskId: message.taskId,
+              });
+              const answerResult = options.taskService.publishBusMessage({
+                senderAgentId: options.leadAgentId,
+                receiverAgentId: message.senderAgentId,
+                taskId: message.taskId,
+                correlationId: thread.id,
+                replyToMessageId: message.id,
+                messageType: "context:provide",
+                subject: "Answer to question",
+                body: result.answer,
+                payload: { threadId: thread.id },
+                dedupeKey: `lead-answer:${thread.id}`,
+              });
+              options.taskService.markQuestionAnswered({
+                threadId: thread.id,
+                answerMessageId: answerResult.messageId,
+              });
+            } catch {
+              // LLM answer failed — question thread stays open for reminder/escalation
+            }
+          }
         } else if (
           (message.messageType === "answer" || message.messageType === "context:provide") &&
           payloadThreadId
@@ -340,6 +385,20 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
       if (existingChildren.length > 0) {
         continue;
       }
+
+      // Cooldown: skip if last decomposition run failed recently
+      try {
+        const latestRun = options.taskService.getLatestDecompositionRun(parent.id);
+        if (latestRun && latestRun.status === "failed") {
+          const ageMs = now() - latestRun.createdAtMs;
+          if (ageMs < DECOMPOSER_RETRY_COOLDOWN_MS) {
+            continue;
+          }
+        }
+      } catch {
+        // best-effort — if lookup fails, proceed with decomposition
+      }
+
       const plan = await decomposer.decompose({
         leadAgentId: options.leadAgentId,
         teamId: options.teamId,
@@ -548,15 +607,19 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
       load.set(task.assignedAgentId, (load.get(task.assignedAgentId) ?? 0) + 1);
     }
 
-    const ready = options.taskService.listTeamReadyTasks(options.teamId).filter((task) => {
-      if (task.assignedAgentId) {
-        return false;
-      }
-      if (task.parentTaskId) {
-        return true;
-      }
-      return options.taskService.listChildTasks(task.id).length === 0;
-    });
+    const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+    const ready = options.taskService
+      .listTeamReadyTasks(options.teamId)
+      .filter((task) => {
+        if (task.assignedAgentId) {
+          return false;
+        }
+        if (task.parentTaskId) {
+          return true;
+        }
+        return options.taskService.listChildTasks(task.id).length === 0;
+      })
+      .toSorted((a, b) => (priorityOrder[a.priority] ?? 4) - (priorityOrder[b.priority] ?? 4));
     for (const task of ready) {
       const selected = [...load.entries()].toSorted((a, b) => a[1] - b[1])[0]?.[0];
       if (!selected) {
@@ -662,7 +725,7 @@ export function createTaskLead(options: TaskLeadOptions): TaskLead {
     while (!signal.aborted) {
       try {
         updateStatus({ state: "processing" });
-        processInboundMessages();
+        await processInboundMessages();
         processDueThreads();
         await decomposeReadyParents(signal);
         reviewParentProgress();

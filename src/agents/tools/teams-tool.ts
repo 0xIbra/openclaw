@@ -9,6 +9,7 @@ const TEAM_ACTIONS = [
   "get",
   "getByName",
   "update",
+  "updateSettings",
   "delete",
   "addMember",
   "removeMember",
@@ -102,6 +103,20 @@ export function createTeamsTool(): AnyAgentTool {
             ...(leadAgentId !== undefined ? { leadAgentId } : {}),
             ...(settings ? { settings } : {}),
           }),
+        );
+      }
+
+      if (action === "updateSettings") {
+        const id = readStringParam(params, "id", { required: true });
+        const settings =
+          params.settings && typeof params.settings === "object" && !Array.isArray(params.settings)
+            ? (params.settings as Record<string, unknown>)
+            : undefined;
+        if (!settings) {
+          throw new Error("updateSettings requires a settings object");
+        }
+        return jsonResult(
+          await callGatewayTool("teams.updateSettings", gatewayOpts, { id, settings }),
         );
       }
 

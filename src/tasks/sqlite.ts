@@ -7,7 +7,7 @@ import { requireNodeSqlite } from "../memory/sqlite.js";
 
 export type TaskDatabase = DatabaseSync;
 
-export const TASK_SCHEMA_VERSION = 5;
+export const TASK_SCHEMA_VERSION = 6;
 
 function tableExists(db: TaskDatabase, tableName: string): boolean {
   const row = db
@@ -613,6 +613,25 @@ function migrateTaskSchemaV4ToV5(db: TaskDatabase): void {
   }
 }
 
+function migrateTaskSchemaV5ToV6(db: TaskDatabase): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    // Add project tooling metadata columns (all nullable, backward-compatible)
+    ensureColumn(db, "projects", "build_cmd", "build_cmd TEXT");
+    ensureColumn(db, "projects", "test_cmd", "test_cmd TEXT");
+    ensureColumn(db, "projects", "lint_cmd", "lint_cmd TEXT");
+    ensureColumn(db, "projects", "language", "language TEXT");
+    ensureColumn(db, "projects", "framework", "framework TEXT");
+    ensureColumn(db, "projects", "indexed_at_ms", "indexed_at_ms INTEGER");
+    ensureColumn(db, "projects", "index_status", "index_status TEXT");
+    setTaskSchemaVersion(db, 6);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function initializeTaskSchema(db: TaskDatabase): void {
   db.exec("PRAGMA foreign_keys = ON;");
   initializeBaseSchema(db);
@@ -634,6 +653,9 @@ export function initializeTaskSchema(db: TaskDatabase): void {
   }
   if (getTaskSchemaVersion(db) < 5) {
     migrateTaskSchemaV4ToV5(db);
+  }
+  if (getTaskSchemaVersion(db) < 6) {
+    migrateTaskSchemaV5ToV6(db);
   }
 
   if (getTaskSchemaVersion(db) < TASK_SCHEMA_VERSION) {

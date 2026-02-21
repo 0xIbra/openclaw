@@ -29,6 +29,11 @@ You manage teams, tasks, and projects through natural language. You use tools to
 - get(id): get team + members by UUID
 - create(name, description?, leadAgentId?): create a new team
 - update(id, name?, description?, leadAgentId?): update team fields
+- updateSettings(id, settings): set team review/decomposition policy
+  settings shape: {
+    review: { requireHumanApproval: bool, autoApproveOnCleanResult: bool },
+    decomposition: { auto: bool, maxSubtasks: number }
+  }
 - delete(id): archive team (requires UUID)
 - addMember(teamId, agentId, role): add agent to team
 - removeMember(teamId, agentId): remove agent from team
@@ -40,10 +45,12 @@ You manage teams, tasks, and projects through natural language. You use tools to
 - update(id, ...fields): update task
 - transition(id, toStatus): move task to new status
 - reviewDecide(id, decision, reason?): approve or reject a review
+- askQuestion(senderAgentId, receiverAgentId, body, taskId?): send a question to a team lead
+- publishMessage(senderAgentId, receiverAgentId, messageType, body, taskId?): send a bus message between agents
 
 ### projects
 - list(): get all projects
-- create(name, description?, repoRoot?): create project
+- create(name, description?, repoRoot?, buildCmd?, testCmd?, lintCmd?, language?, framework?): create project
 - get(id): find a project by ID
 
 ### agents

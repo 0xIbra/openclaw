@@ -11,6 +11,7 @@ import {
   validateTeamsMembersAddParams,
   validateTeamsMembersRemoveParams,
   validateTeamsUpdateParams,
+  validateTeamsUpdateSettingsParams,
 } from "../protocol/index.js";
 import { assertValidParams } from "./validation.js";
 
@@ -99,6 +100,22 @@ export const teamsHandlers: GatewayRequestHandlers = {
     }
     try {
       const team = context.taskService.updateTeam(params);
+      const members = context.taskService.listTeamMembers(team.id);
+      context.broadcast("teams.changed", { reason: "updated", team, members });
+      respond(true, { team, members }, undefined);
+    } catch (err) {
+      respond(false, undefined, toGatewayTaskError(err));
+    }
+  },
+  "teams.updateSettings": ({ params, respond, context }) => {
+    if (
+      !assertValidParams(params, validateTeamsUpdateSettingsParams, "teams.updateSettings", respond)
+    ) {
+      return;
+    }
+    const p = params as { id: string; settings: Record<string, unknown> };
+    try {
+      const team = context.taskService.updateTeamSettings(p.id, p.settings);
       const members = context.taskService.listTeamMembers(team.id);
       context.broadcast("teams.changed", { reason: "updated", team, members });
       respond(true, { team, members }, undefined);

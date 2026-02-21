@@ -477,6 +477,7 @@ export async function startGatewayServer(
           dataDir: STATE_DIR,
           config: cfgAtStart,
           headless: process.env.OPENCLAW_BROWSER_HEADLESS === "1",
+          taskService,
         }),
         onWorkerEvent: (event) => {
           broadcast("tasks.worker.changed", event, { dropIfSlow: true });
