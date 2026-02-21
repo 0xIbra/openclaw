@@ -48,11 +48,17 @@ Your job is to manage your team's workflow each turn: decompose parent tasks, de
 type LeadSnapshot = {
   hasWork: boolean;
   members: Array<{ agentId: string; role: string }>;
-  pendingMessages: Array<{ id: string; ackToken: string }>;
+  pendingMessages: Array<{
+    id: string;
+    senderAgentId: string;
+    messageType: string;
+    subject: string | null;
+    body: string;
+  }>;
   activeTasks: TaskRecord[];
   readyTasks: TaskRecord[];
   blockedTasks: TaskRecord[];
-  openQuestions: TaskQuestionThreadRecord[];
+  openQuestions: Array<{ thread: TaskQuestionThreadRecord; questionBody: string }>;
 };
 
 function buildLeadContextSnapshot(options: TaskLeadOptions): LeadSnapshot {
@@ -66,7 +72,13 @@ function buildLeadContextSnapshot(options: TaskLeadOptions): LeadSnapshot {
     maxMessages: 20,
     visibilityTimeoutMs: 30_000,
   });
-  const pendingMessages = deliveries.map((d) => ({ id: d.message.id, ackToken: d.ackToken }));
+  const pendingMessages = deliveries.map((d) => ({
+    id: d.message.id,
+    senderAgentId: d.message.senderAgentId,
+    messageType: d.message.messageType,
+    subject: d.message.subject,
+    body: d.message.body,
+  }));
 
   // Ack messages immediately — the LLM will see them in the prompt
   for (const delivery of deliveries) {
@@ -81,14 +93,19 @@ function buildLeadContextSnapshot(options: TaskLeadOptions): LeadSnapshot {
     }
   }
 
-  const openQuestions = options.taskService
+  const rawQuestions = options.taskService
     .listDueQuestionReminders(Date.now() + 999_999_999)
     .filter(
       (thread) => thread.teamId === options.teamId && thread.leadAgentId === options.leadAgentId,
     );
+  const openQuestions = rawQuestions.map((thread) => ({
+    thread,
+    questionBody:
+      options.taskService.getBusMessage(thread.questionMessageId)?.body ?? "(question unavailable)",
+  }));
 
   const hasWork =
-    deliveries.length > 0 ||
+    pendingMessages.length > 0 ||
     readyTasks.some((t) => !t.assignedAgentId) ||
     activeTasks.some((t) => t.status === "review") ||
     openQuestions.length > 0;
@@ -121,6 +138,16 @@ function buildLeadTurnPrompt(options: TaskLeadOptions, snapshot: LeadSnapshot): 
   sections.push(`- Lead: ${options.leadAgentId}`);
   sections.push(`- Members: ${snapshot.members.map((m) => `${m.agentId} (${m.role})`).join(", ")}`);
 
+  if (snapshot.pendingMessages.length > 0) {
+    sections.push(`\n## Inbox Messages (${snapshot.pendingMessages.length})`);
+    for (const msg of snapshot.pendingMessages) {
+      const subjectLine = msg.subject ? ` — ${msg.subject}` : "";
+      sections.push(
+        `- [${msg.messageType}] from ${msg.senderAgentId}${subjectLine}\n  ${msg.body}`,
+      );
+    }
+  }
+
   if (snapshot.activeTasks.length > 0) {
     sections.push(`\n## Active Tasks (${snapshot.activeTasks.length})`);
     sections.push(snapshot.activeTasks.map(formatTask).join("\n"));
@@ -145,9 +172,9 @@ function buildLeadTurnPrompt(options: TaskLeadOptions, snapshot: LeadSnapshot): 
 
   if (snapshot.openQuestions.length > 0) {
     sections.push(`\n## Open Questions (${snapshot.openQuestions.length})`);
-    for (const q of snapshot.openQuestions) {
+    for (const { thread, questionBody } of snapshot.openQuestions) {
       sections.push(
-        `- Question from ${q.requesterAgentId} (thread: ${q.id}, task: ${q.taskId ?? "none"})`,
+        `- From ${thread.requesterAgentId} (thread: ${thread.id}, task: ${thread.taskId ?? "none"})\n  > ${questionBody}`,
       );
     }
   }

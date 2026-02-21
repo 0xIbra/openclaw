@@ -745,6 +745,22 @@ export const chatHandlers: GatewayRequestHandlers = {
             }
           },
           onModelSelected,
+          onReasoningStream: (payload) => {
+            const thinkingText = typeof payload.text === "string" ? payload.text.trim() : "";
+            if (!thinkingText) {
+              return;
+            }
+            const seq = nextChatSeq(context, clientRunId);
+            const thinkingPayload = {
+              runId: clientRunId,
+              sessionKey,
+              seq,
+              state: "thinking_delta" as const,
+              thinking: thinkingText,
+            };
+            context.broadcast("chat", thinkingPayload);
+            context.nodeSendToSession(sessionKey, "chat", thinkingPayload);
+          },
         },
       })
         .then(() => {

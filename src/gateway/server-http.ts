@@ -440,6 +440,7 @@ export function createGatewayHttpServer(opts: {
   controlUiEnabled: boolean;
   controlUiBasePath: string;
   controlUiRoot?: ControlUiRootState;
+  opengridUiRoot?: ControlUiRootState;
   openAiChatCompletionsEnabled: boolean;
   openResponsesEnabled: boolean;
   openResponsesConfig?: import("../config/types.gateway.js").GatewayHttpResponsesConfig;
@@ -456,6 +457,7 @@ export function createGatewayHttpServer(opts: {
     controlUiEnabled,
     controlUiBasePath,
     controlUiRoot,
+    opengridUiRoot,
     openAiChatCompletionsEnabled,
     openResponsesEnabled,
     openResponsesConfig,
@@ -558,6 +560,16 @@ export function createGatewayHttpServer(opts: {
           return;
         }
         if (await canvasHost.handleHttpRequest(req, res)) {
+          return;
+        }
+      }
+      if (opengridUiRoot) {
+        if (
+          handleControlUiHttpRequest(req, res, {
+            basePath: "/opengrid",
+            root: opengridUiRoot,
+          })
+        ) {
           return;
         }
       }

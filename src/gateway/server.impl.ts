@@ -27,6 +27,7 @@ import {
   ensureControlUiAssetsBuilt,
   resolveControlUiRootOverrideSync,
   resolveControlUiRootSync,
+  resolveOpengridUiRootSync,
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
@@ -49,6 +50,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import {
   createCompositeTaskExecutorFactory,
+  createQuestionAnswerer,
   createTaskLeadSupervisor,
   createTaskRuntimeSupervisor,
 } from "../tasks/runtime/index.js";
@@ -329,6 +331,18 @@ export async function startGatewayServer(
       : { kind: "missing" };
   }
 
+  const opengridUiRootResolved = resolveOpengridUiRootSync({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+  });
+  const opengridUiRootState: ControlUiRootState | undefined = opengridUiRootResolved
+    ? { kind: "resolved", path: opengridUiRootResolved }
+    : undefined;
+  if (opengridUiRootResolved) {
+    log.info(`gateway: opengrid UI mounted at /opengrid/ (${opengridUiRootResolved})`);
+  }
+
   const wizardRunner = opts.wizardRunner ?? runOnboardingWizard;
   const { wizardSessions, findRunningWizard, purgeWizardSession } = createWizardSessionTracker();
 
@@ -363,6 +377,7 @@ export async function startGatewayServer(
     controlUiEnabled,
     controlUiBasePath,
     controlUiRoot: controlUiRootState,
+    opengridUiRoot: opengridUiRootState,
     openAiChatCompletionsEnabled,
     openResponsesEnabled,
     openResponsesConfig,
@@ -484,10 +499,15 @@ export async function startGatewayServer(
         },
       })
     : null;
+  const questionAnswerer = taskRuntimeEnabled
+    ? createQuestionAnswerer({ loadCurrentConfig: loadConfig })
+    : undefined;
   const taskLeadSupervisor = taskRuntimeEnabled
     ? createTaskLeadSupervisor({
         taskService,
         config: cfgAtStart,
+        useLLMLead: true,
+        questionAnswerer,
         onLeadEvent: (event) => {
           broadcast("tasks.lead.changed", event, { dropIfSlow: true });
           emitLeadDerivedEvents(event);

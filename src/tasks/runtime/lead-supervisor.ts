@@ -73,6 +73,7 @@ export function createTaskLeadSupervisor(options: TaskLeadSupervisorOptions): Ta
         teamId: binding.teamId,
         teamName: binding.teamName,
         leadAgentId: binding.leadAgentId,
+        questionAnswerer: options.questionAnswerer,
         onEvent: emitLead,
       });
       leads.set(teamId, lead);

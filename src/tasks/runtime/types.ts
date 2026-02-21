@@ -243,6 +243,8 @@ export type TaskLeadSupervisorOptions = {
   createLead?: (options: TaskLeadOptions) => TaskLead;
   /** Use the LLM-driven lead instead of the deterministic lead. */
   useLLMLead?: boolean;
+  /** Question answerer — passed down to each lead instance. */
+  questionAnswerer?: TaskQuestionAnswerer;
   reconcileIntervalMs?: number;
   onLeadEvent?: (event: TaskLeadEvent) => void;
   onEscalation?: (event: Record<string, unknown>) => void;

@@ -128,6 +128,41 @@ export type ControlUiRootResolveOptions = {
   execPath?: string;
 };
 
+/**
+ * Resolves the dist/opengrid/ directory for the new Opengrid UI (ui-v2/).
+ * Mirrors resolveControlUiRootSync but targets dist/opengrid instead of dist/control-ui.
+ */
+export function resolveOpengridUiRootSync(opts: ControlUiRootResolveOptions = {}): string | null {
+  const candidates = new Set<string>();
+  const argv1 = opts.argv1 ?? process.argv[1];
+  const cwd = opts.cwd ?? process.cwd();
+  const moduleDir = opts.moduleUrl ? path.dirname(fileURLToPath(opts.moduleUrl)) : null;
+  const argv1Dir = argv1 ? path.dirname(path.resolve(argv1)) : null;
+  const packageRoot = resolveOpenClawPackageRootSync({ argv1, moduleUrl: opts.moduleUrl, cwd });
+
+  if (moduleDir) {
+    addCandidate(candidates, path.join(moduleDir, "opengrid"));
+    addCandidate(candidates, path.join(moduleDir, "../opengrid"));
+    addCandidate(candidates, path.join(moduleDir, "../../dist/opengrid"));
+  }
+  if (argv1Dir) {
+    addCandidate(candidates, path.join(argv1Dir, "dist", "opengrid"));
+    addCandidate(candidates, path.join(argv1Dir, "opengrid"));
+  }
+  if (packageRoot) {
+    addCandidate(candidates, path.join(packageRoot, "dist", "opengrid"));
+  }
+  addCandidate(candidates, path.join(cwd, "dist", "opengrid"));
+
+  for (const dir of candidates) {
+    const indexPath = path.join(dir, "index.html");
+    if (fs.existsSync(indexPath)) {
+      return dir;
+    }
+  }
+  return null;
+}
+
 function addCandidate(candidates: Set<string>, value: string | null) {
   if (!value) {
     return;
