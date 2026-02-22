@@ -135,6 +135,10 @@ export function createTasksTool(): AnyAgentTool {
         const title = readStringParam(params, "title", { required: true });
         const description = readStringParam(params, "description", { required: true });
         const type = readStringParam(params, "type", { required: true });
+        const teamId = readStringParam(params, "teamId") || undefined;
+        // Tasks assigned to a team must be in 'backlog' to enter the team queue
+        const explicitStatus = readStringParam(params, "status") || undefined;
+        const status = explicitStatus ?? (teamId ? "backlog" : undefined);
         return jsonResult(
           await callGatewayTool("tasks.create", gatewayOpts, {
             projectId,
@@ -143,7 +147,7 @@ export function createTasksTool(): AnyAgentTool {
             type,
             priority: readStringParam(params, "priority") || undefined,
             complexity: readStringParam(params, "complexity") || undefined,
-            status: readStringParam(params, "status") || undefined,
+            status,
             parentTaskId: readStringParam(params, "parentTaskId") || undefined,
             dependsOnTaskIds: Array.isArray(params.dependsOnTaskIds)
               ? params.dependsOnTaskIds
@@ -151,7 +155,7 @@ export function createTasksTool(): AnyAgentTool {
                   .filter(Boolean)
               : undefined,
             assignedAgentId: readStringParam(params, "assignedAgentId") || undefined,
-            teamId: readStringParam(params, "teamId") || undefined,
+            teamId,
             maxAttempts:
               typeof params.maxAttempts === "number" ? Math.floor(params.maxAttempts) : undefined,
             relevantPaths: Array.isArray(params.relevantPaths)
