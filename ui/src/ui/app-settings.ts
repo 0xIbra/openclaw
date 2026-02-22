@@ -204,6 +204,12 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "cron") {
     await loadCron(host);
   }
+  if (host.tab === "activity") {
+    await Promise.all([
+      loadAgents(host as unknown as OpenClawApp),
+      loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined),
+    ]);
+  }
   if (host.tab === "board") {
     await loadProjects(host as unknown as Parameters<typeof loadProjects>[0]);
     await loadTasks(host as unknown as Parameters<typeof loadTasks>[0]);

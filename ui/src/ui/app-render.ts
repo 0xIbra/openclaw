@@ -71,6 +71,7 @@ import {
 import { loadTeams } from "./controllers/teams.ts";
 import { icons } from "./icons.ts";
 import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
+import { renderActivity } from "./views/activity.ts";
 import { renderAgents } from "./views/agents.ts";
 import { renderBoard } from "./views/board.ts";
 import { renderChannels } from "./views/channels.ts";
@@ -285,6 +286,29 @@ export function renderApp(state: AppViewState) {
                 },
                 onConnect: () => state.connect(),
                 onRefresh: () => state.loadOverview(),
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "activity"
+            ? renderActivity({
+                runtimeStatus: state.boardRuntimeStatus,
+                runtimeLoading: state.boardRuntimeLoading,
+                runtimeError: state.boardRuntimeError,
+                agentsList: state.agentsList,
+                tasks: state.boardTasks,
+                onRefresh: () => {
+                  state.boardRuntimeLoading = true;
+                  void Promise.all([
+                    loadAgents(state),
+                    loadRuntimeStatus(state).catch((err: unknown) => {
+                      state.boardRuntimeError = String(err);
+                    }),
+                  ]).finally(() => {
+                    state.boardRuntimeLoading = false;
+                  });
+                },
               })
             : nothing
         }

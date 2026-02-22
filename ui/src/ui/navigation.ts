@@ -4,7 +4,7 @@ export const TAB_GROUPS = [
   { label: "Chat", tabs: ["chat"] },
   {
     label: "Control",
-    tabs: ["overview", "board", "channels", "instances", "sessions", "usage", "cron"],
+    tabs: ["overview", "activity", "board", "channels", "instances", "sessions", "usage", "cron"],
   },
   { label: "Agent", tabs: ["agents", "skills", "nodes"] },
   { label: "Settings", tabs: ["config", "debug", "logs"] },
@@ -13,6 +13,7 @@ export const TAB_GROUPS = [
 export type Tab =
   | "agents"
   | "overview"
+  | "activity"
   | "board"
   | "channels"
   | "instances"
@@ -29,6 +30,7 @@ export type Tab =
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
   overview: "/overview",
+  activity: "/activity",
   board: "/board",
   channels: "/channels",
   instances: "/instances",
@@ -132,6 +134,8 @@ export function iconForTab(tab: Tab): IconName {
       return "messageSquare";
     case "overview":
       return "barChart";
+    case "activity":
+      return "radio";
     case "board":
       return "folder";
     case "channels":
@@ -165,6 +169,8 @@ export function titleForTab(tab: Tab) {
       return "Agents";
     case "overview":
       return "Overview";
+    case "activity":
+      return "Activity";
     case "board":
       return "Board";
     case "channels":
@@ -200,6 +206,8 @@ export function subtitleForTab(tab: Tab) {
       return "Manage agent workspaces, tools, and identities.";
     case "overview":
       return "Gateway status, entry points, and a fast health read.";
+    case "activity":
+      return "Live runtime status for every lead and worker agent.";
     case "board":
       return "Kanban view for projects and execution tasks.";
     case "channels":

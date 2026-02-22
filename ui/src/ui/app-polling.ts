@@ -75,11 +75,11 @@ export function startBoardRuntimePolling(host: PollingHost) {
     return;
   }
   host.boardRuntimePollInterval = window.setInterval(() => {
-    if (host.tab !== "board") {
+    if (host.tab !== "board" && host.tab !== "activity") {
       return;
     }
     void loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined);
-  }, 12_000);
+  }, 8_000);
 }
 
 export function stopBoardRuntimePolling(host: PollingHost) {
