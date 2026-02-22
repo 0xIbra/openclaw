@@ -15,14 +15,43 @@ export function TerminalPane({ agentId, className }: Props) {
   const { request, on, connected } = useWs();
   const unsubRef = useRef<(() => void) | null>(null);
 
+  // Re-subscribe to PTY output and sync terminal dimensions.
+  // Called on init and whenever the agent starts/restarts.
+  const resubscribe = useCallback(async () => {
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!term || !fitAddon) {
+      return;
+    }
+
+    try {
+      const result = await request<{ buffer: string }>("terminal.subscribe", { id: agentId });
+      // Clear and rewrite the buffer so we get a clean view
+      term.reset();
+      if (result.buffer) {
+        term.write(result.buffer);
+      }
+    } catch {}
+
+    // Sync PTY dimensions with the actual browser terminal size
+    fitAddon.fit();
+    request("agents.resize", { id: agentId, cols: term.cols, rows: term.rows }).catch(() => {});
+  }, [agentId, request]);
+
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || termRef.current) {
       return;
     }
 
-    // Dynamically import xterm (browser-only)
+    const container = containerRef.current;
+
     const { Terminal } = await import("@xterm/xterm");
     const { FitAddon } = await import("@xterm/addon-fit");
+
+    // Bail if unmounted or another terminal was created during import
+    if (!container.isConnected || termRef.current) {
+      return;
+    }
 
     const term = new Terminal({
       theme: {
@@ -57,23 +86,23 @@ export function TerminalPane({ agentId, className }: Props) {
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(containerRef.current);
+    term.open(container);
     fitAddon.fit();
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Handle user input → send to agent
+    // Raw keystrokes → PTY directly. Use agents.input (no \n appended, not persisted).
     term.onData((data) => {
-      void request("agents.write", { id: agentId, text: data });
+      request("agents.input", { id: agentId, text: data }).catch(() => {});
     });
 
-    // Handle resize
+    // Keep PTY dimensions in sync with browser terminal
     term.onResize(({ cols, rows }) => {
-      void request("agents.resize", { id: agentId, cols, rows });
+      request("agents.resize", { id: agentId, cols, rows }).catch(() => {});
     });
 
-    // Subscribe to terminal output events
+    // Stream live output from PTY
     const unsub = on("agent.output", (payload) => {
       const p = payload as { agentId: string; data: string };
       if (p.agentId === agentId) {
@@ -82,39 +111,35 @@ export function TerminalPane({ agentId, className }: Props) {
     });
     unsubRef.current = unsub;
 
-    // Load existing buffer from server
-    try {
-      const result = await request<{ buffer: string }>("terminal.subscribe", { id: agentId });
-      if (result.buffer) {
-        term.write(result.buffer);
-      }
-    } catch {}
+    // Initial subscription + dimension sync
+    await resubscribe();
 
-    // Fit on window resize
-    const observer = new ResizeObserver(() => fitAddon.fit());
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    const observer = new ResizeObserver(() => {
+      fitAddon.fit();
+    });
+    observer.observe(container);
 
     return () => {
       observer.disconnect();
     };
-  }, [agentId, request, on]);
+  }, [agentId, request, on, resubscribe]);
 
+  // Mount / reconnect effect
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 
     if (connected) {
-      void initTerminal().then((fn) => {
-        cleanup = fn;
-      });
+      void initTerminal()
+        .then((fn) => {
+          cleanup = fn;
+        })
+        .catch(console.error);
     }
 
     return () => {
       cleanup?.();
       unsubRef.current?.();
       unsubRef.current = null;
-      // Unsubscribe from server
       void request("terminal.unsubscribe", { id: agentId }).catch(() => {});
       termRef.current?.dispose();
       termRef.current = null;
@@ -122,6 +147,23 @@ export function TerminalPane({ agentId, className }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, connected]);
+
+  // Re-subscribe + re-sync dimensions whenever agent starts/restarts
+  useEffect(() => {
+    if (!connected) {
+      return;
+    }
+
+    const unsub = on("agent.status", (payload) => {
+      const p = payload as { agentId: string; status: string };
+      if (p.agentId !== agentId || p.status === "offline") {
+        return;
+      }
+      void resubscribe().catch(() => {});
+    });
+
+    return unsub;
+  }, [agentId, connected, on, resubscribe]);
 
   return <div ref={containerRef} className={className} style={{ background: "#09090b" }} />;
 }

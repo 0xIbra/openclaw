@@ -34,38 +34,96 @@ const TASK_ICONS: Record<TaskStatus, React.ReactNode> = {
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { agents } = useAgents();
+  const { agents, loading: agentsLoading } = useAgents();
   const { tasks, refetch: refetchTasks } = useTasks(id);
   const { messages } = useMessages(id);
-  const { request } = useWs();
+  const { request, on } = useWs();
 
   const agent = agents.find((a) => a.id === id);
   const [msgInput, setMsgInput] = useState("");
+  // Tracks whether we're waiting for Claude to reply after sending a message
+  const [awaitingReply, setAwaitingReply] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Reset awaitingReply when agent goes offline (stopped/crashed)
+  useEffect(() => {
+    if (agent?.status === "offline") {
+      setAwaitingReply(false);
+    }
+  }, [agent?.status]);
+
+  // Detect when Claude finishes responding: 2 s of output silence → re-enable input.
+  // Every agent.output event resets the timer; when it expires Claude is idle.
+  useEffect(() => {
+    if (!awaitingReply) {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      return;
+    }
+
+    const scheduleReset = () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      silenceTimerRef.current = setTimeout(() => setAwaitingReply(false), 2000);
+    };
+
+    // Arm the timer immediately (handles case where Claude never responds)
+    scheduleReset();
+
+    const unsub = on("agent.output", (payload) => {
+      const p = payload as { agentId: string; data: string };
+      if (p.agentId === id) {
+        scheduleReset();
+      }
+    });
+
+    return () => {
+      unsub();
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+    };
+  }, [awaitingReply, id, on]);
+
   if (!agent) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-muted-foreground text-sm">Agent not found.</p>
+        <p className="text-muted-foreground text-sm">
+          {agentsLoading ? "Loading…" : "Agent not found."}
+        </p>
       </div>
     );
   }
 
+  const isBusy = awaitingReply || agent.status === "working";
+
   const start = () => void request("agents.start", { id }).catch(console.error);
   const stop = () => void request("agents.stop", { id }).catch(console.error);
   const restart = () => void request("agents.restart", { id }).catch(console.error);
-  const interrupt = () => void request("agents.interrupt", { id }).catch(console.error);
+  const interrupt = () => {
+    void request("agents.interrupt", { id }).catch(console.error);
+    setAwaitingReply(false);
+  };
 
   const sendMsg = () => {
     if (!msgInput.trim()) {
       return;
     }
-    void request("agents.write", { id, text: msgInput.trim() }).catch(console.error);
+    const text = msgInput.trim();
     setMsgInput("");
+    setAwaitingReply(true);
+    // Persist to message history
+    void request("agents.write", { id, text }).catch(console.error);
+    // Type into PTY: content written first, then \r in a separate event-loop tick
+    void request("agents.type", { id, text }).catch(console.error);
   };
 
   const dispatchTask = (taskId: string) => {
@@ -117,16 +175,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5" onClick={restart}>
                 <RotateCcw className="h-3 w-3" /> Restart
               </Button>
-              {agent.status === "working" && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs gap-1.5 text-amber-400 hover:text-amber-300"
-                  onClick={interrupt}
-                >
-                  <Zap className="h-3 w-3" /> Interrupt
-                </Button>
-              )}
             </>
           )}
         </div>
@@ -141,8 +189,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           {/* Message input */}
           <div className="flex items-center gap-2 p-3 border-t border-border shrink-0 bg-card">
             <Input
-              placeholder="Type a message…"
+              placeholder={isBusy ? "Agent is working…" : "Type a message…"}
               value={msgInput}
+              disabled={isBusy}
               onChange={(e) => setMsgInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -152,9 +201,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               }}
               className="text-sm font-mono"
             />
-            <Button size="icon" className="h-9 w-9 shrink-0" onClick={sendMsg}>
-              <Send className="h-4 w-4" />
-            </Button>
+            {isBusy ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 shrink-0 gap-1.5 text-amber-400 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-300"
+                onClick={interrupt}
+              >
+                <Zap className="h-3.5 w-3.5" /> Interrupt
+              </Button>
+            ) : (
+              <Button size="icon" className="h-9 w-9 shrink-0" onClick={sendMsg}>
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -173,9 +233,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   Messages
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="tasks" className="mt-0">
-                <TaskForm agents={[agent]} defaultAgentId={id} onCreated={refetchTasks} />
-              </TabsContent>
+              <TaskForm agents={[agent]} defaultAgentId={id} onCreated={refetchTasks} />
             </div>
 
             {/* Tasks */}

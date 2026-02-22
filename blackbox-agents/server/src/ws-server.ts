@@ -1,6 +1,7 @@
 import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
 import { WebSocketServer, WebSocket } from "ws";
+import type { BotManager } from "./integrations/bot-manager.ts";
 import type { WsEvtFrame, WsFrame, WsReqFrame } from "./types.ts";
 import { AgentRunner } from "./agent-runner.ts";
 import * as db from "./db.ts";
@@ -20,7 +21,19 @@ type WsClient = {
 
 // ─── Create server ────────────────────────────────────────────────────────────
 
-export function createWsServer(port: number): http.Server {
+export type WsServerOptions = {
+  onSettingsChange?: () => void;
+  botManagerRef?: { current: BotManager | null };
+};
+
+export function createWsServer(
+  port: number,
+  options?: WsServerOptions,
+): {
+  httpServer: http.Server;
+  runner: AgentRunner;
+  emit: (event: string, payload: unknown) => void;
+} {
   const pty = new PtyManager();
   const clients = new Map<string, WsClient>();
 
@@ -65,14 +78,16 @@ export function createWsServer(port: number): http.Server {
         return;
       }
 
-      void handleRequest(frame, client, runner, dispatcher, pty, emit).catch((err: unknown) => {
-        send(ws, {
-          type: "res",
-          id: frame.id,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
+      void handleRequest(frame, client, runner, dispatcher, pty, emit, options).catch(
+        (err: unknown) => {
+          send(ws, {
+            type: "res",
+            id: frame.id,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        },
+      );
     });
 
     ws.on("close", () => {
@@ -88,7 +103,7 @@ export function createWsServer(port: number): http.Server {
     console.log(`[blackbox] Server listening on ws://localhost:${port}`);
   });
 
-  return httpServer;
+  return { httpServer, runner, emit };
 }
 
 // ─── Request handler ──────────────────────────────────────────────────────────
@@ -100,6 +115,7 @@ async function handleRequest(
   dispatcher: TaskDispatcher,
   pty: PtyManager,
   emit: (event: string, payload: unknown) => void,
+  options?: WsServerOptions,
 ): Promise<void> {
   const { method, params, id } = frame;
   const p = (params ?? {}) as Record<string, unknown>;
@@ -152,21 +168,51 @@ async function handleRequest(
         return respond({ ok: true });
       }
 
-      case "agents.start":
-        await runner.start(p["id"] as string);
-        return respond(db.getAgent(p["id"] as string));
+      case "agents.start": {
+        const startId = p["id"] as string;
+        await runner.start(startId);
+        options?.botManagerRef?.current?.subscribeAgent(startId);
+        return respond(db.getAgent(startId));
+      }
 
       case "agents.stop":
         await runner.stop(p["id"] as string);
         return respond(db.getAgent(p["id"] as string));
 
-      case "agents.restart":
-        await runner.restart(p["id"] as string);
-        return respond(db.getAgent(p["id"] as string));
+      case "agents.restart": {
+        const restartId = p["id"] as string;
+        await runner.restart(restartId);
+        options?.botManagerRef?.current?.subscribeAgent(restartId);
+        return respond(db.getAgent(restartId));
+      }
 
-      case "agents.write":
-        runner.sendMessage(p["id"] as string, p["text"] as string);
+      // Persist a user message to history — does NOT write to PTY.
+      // The client sends the actual PTY input via agents.input separately.
+      case "agents.write": {
+        const msg = db.createMessage({
+          agentId: p["id"] as string,
+          direction: "user",
+          content: p["text"] as string,
+        });
+        emit("message.new", { message: msg });
         return respond({ ok: true });
+      }
+
+      // Raw PTY input from terminal — no newline appended, not persisted to messages
+      case "agents.input":
+        pty.write(p["id"] as string, p["text"] as string);
+        return respond({ ok: true });
+
+      // Type text then press Enter. Content and \r are written as two separate PTY writes
+      // with an event-loop yield between them, so Claude Code's readline sees them as
+      // distinct chunks (content chunk → Enter chunk) instead of one pasted blob.
+      case "agents.type": {
+        const agentId = p["id"] as string;
+        const text = p["text"] as string;
+        pty.write(agentId, text);
+        setTimeout(() => pty.write(agentId, "\r"), 0);
+        return respond({ ok: true });
+      }
 
       case "agents.interrupt":
         runner.interrupt(p["id"] as string);
@@ -183,15 +229,15 @@ async function handleRequest(
 
       case "terminal.subscribe": {
         const agentId = p["id"] as string;
-        if (client.termSubs.has(agentId)) {
-          // Already subscribed — just send the buffer
-          return respond({ buffer: runner.getBuffer(agentId) });
-        }
 
-        // Send existing buffer immediately
+        // Always clean up any stale subscription (e.g. no-op from before agent started)
+        client.unsubscribers.get(agentId)?.();
+        client.unsubscribers.delete(agentId);
+        client.termSubs.delete(agentId);
+
         const buffer = runner.getBuffer(agentId);
 
-        // Subscribe to future output
+        // Subscribe to future output (no-op if agent not yet running)
         const unsub = runner.subscribeToOutput(agentId, (data) => {
           send(client.ws, {
             type: "event",
@@ -256,6 +302,66 @@ async function handleRequest(
         return respond(
           db.getMessages(p["agentId"] as string, typeof p["limit"] === "number" ? p["limit"] : 200),
         );
+
+      // ── Settings ────────────────────────────────────────────────────────────
+
+      case "settings.getAll": {
+        const keys = ["telegram_token", "telegram_chat_id", "discord_token", "discord_channel_id"];
+        const result: Record<string, string> = {};
+        for (const k of keys) {
+          const v = db.getSetting(k);
+          if (v) {
+            result[k] = k.endsWith("_token") ? "***" : v;
+          }
+        }
+        return respond(result);
+      }
+
+      case "settings.update": {
+        const updates = p as Record<string, string>;
+        for (const [k, v] of Object.entries(updates)) {
+          if (typeof v === "string") {
+            db.setSetting(k, v);
+          }
+        }
+        options?.onSettingsChange?.();
+        return respond({ ok: true });
+      }
+
+      // Detect chat/channel IDs automatically from bot tokens
+      case "settings.telegram.detectChatId": {
+        // Use the provided token, or fall back to the stored one
+        const token =
+          typeof p["token"] === "string" && p["token"]
+            ? p["token"]
+            : db.getSetting("telegram_token");
+        if (!token) {
+          throw new Error("No Telegram token configured");
+        }
+        const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
+        const json = (await res.json()) as {
+          ok: boolean;
+          result: Array<{
+            message?: {
+              chat: { id: number; title?: string; username?: string; first_name?: string };
+            };
+          }>;
+          description?: string;
+        };
+        if (!json.ok) {
+          throw new Error(json.description ?? "Telegram API error");
+        }
+        // Pick the chat ID from the most recent message
+        const update = json.result.find((u) => u.message?.chat?.id !== undefined);
+        if (!update?.message) {
+          throw new Error("No messages found. Send any message to your bot first, then try again.");
+        }
+        const chat = update.message.chat;
+        return respond({
+          chatId: String(chat.id),
+          name: chat.title ?? chat.username ?? chat.first_name ?? String(chat.id),
+        });
+      }
 
       default:
         err(`Unknown method: ${method}`);

@@ -42,8 +42,11 @@ export class AgentRunner {
   }
 
   sendMessage(agentId: string, content: string): Message {
-    // Write to PTY stdin
-    this.pty.write(agentId, content + "\n");
+    // Write content then \r as two separate PTY writes with an event-loop yield
+    // between them. This mimics actual typing (content chunk → Enter chunk) so
+    // Claude Code's readline submits the line instead of treating it as a paste.
+    this.pty.write(agentId, content);
+    setTimeout(() => this.pty.write(agentId, "\r"), 0);
 
     // Persist
     const msg = db.createMessage({ agentId, direction: "user", content });

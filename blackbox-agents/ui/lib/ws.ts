@@ -257,5 +257,16 @@ export function useMessages(agentId: string): { messages: Message[]; loading: bo
     return unsub;
   }, [on, agentId]);
 
+  // Clear message history when the agent restarts (fresh session)
+  useEffect(() => {
+    const unsub = on("agent.status", (payload) => {
+      const { agentId: id, status } = payload as { agentId: string; status: string };
+      if (id === agentId && status === "idle") {
+        setMessages([]);
+      }
+    });
+    return unsub;
+  }, [on, agentId]);
+
   return { messages, loading };
 }
