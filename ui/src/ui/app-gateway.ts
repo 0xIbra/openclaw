@@ -11,6 +11,9 @@ import type {
   StatusSummary,
   TaskEscalationDto,
   TaskRuntimeStatusDto,
+  TaskRuntimeTeamDto,
+  TeamDto,
+  TeamMemberDto,
 } from "./types.ts";
 import { CHAT_SESSIONS_ACTIVE_MINUTES, flushChatQueueForEvent } from "./app-chat.ts";
 import {
@@ -368,11 +371,29 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     return;
   }
 
-  if (evt.event === "teams.changed" && host.boardRuntimeStatus) {
-    host.boardRuntimeStatus = {
-      ...host.boardRuntimeStatus,
-      updatedAtMs: Date.now(),
-    };
+  if (evt.event === "teams.changed") {
+    const payload = evt.payload as { team?: TeamDto; members?: TeamMemberDto[] } | undefined;
+    const changedTeam = payload?.team;
+    const changedMembers = payload?.members;
+
+    if (changedTeam && host.boardRuntimeStatus) {
+      const memberAgentIds = changedMembers?.map((m) => m.agentId) ?? [];
+      const runtimeEntry: TaskRuntimeTeamDto = {
+        teamId: changedTeam.id,
+        teamName: changedTeam.name,
+        leadAgentId: changedTeam.leadAgentId,
+        memberAgentIds,
+      };
+      const teams = [...host.boardRuntimeStatus.teams];
+      const idx = teams.findIndex((t) => t.teamId === changedTeam.id);
+      if (idx >= 0) {
+        teams[idx] = runtimeEntry;
+      } else {
+        teams.push(runtimeEntry);
+      }
+      host.boardRuntimeStatus = { ...host.boardRuntimeStatus, teams, updatedAtMs: Date.now() };
+    }
+
     return;
   }
 

@@ -882,7 +882,11 @@ export function renderApp(state: AppViewState) {
                 agentSkillsAgentId: state.agentSkillsAgentId,
                 skillsFilter: state.skillsFilter,
                 onRefresh: async () => {
-                  await Promise.all([loadAgents(state), loadTeams(state)]);
+                  await Promise.all([
+                    loadAgents(state),
+                    loadTeams(state),
+                    loadRuntimeStatus(state).catch(() => undefined),
+                  ]);
                   const agentIds = state.agentsList?.agents?.map((entry) => entry.id) ?? [];
                   if (agentIds.length > 0) {
                     void loadAgentIdentities(state, agentIds);

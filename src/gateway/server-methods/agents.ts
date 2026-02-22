@@ -280,19 +280,40 @@ export const agentsHandlers: GatewayRequestHandlers = {
 
     await writeConfigFile(nextConfig);
 
-    // Always write Name to IDENTITY.md; optionally include emoji/avatar.
+    // Write identity to IDENTITY.md.
+    // When a bio is provided, write a full structured identity file (overwrite the bootstrap stub).
+    // Otherwise append minimal fields (name + emoji/avatar) to whatever the bootstrap wrote.
     const safeName = sanitizeIdentityLine(rawName);
     const emoji = resolveOptionalStringParam(params.emoji);
     const avatar = resolveOptionalStringParam(params.avatar);
+    const creature = resolveOptionalStringParam(params.creature);
+    const vibe = resolveOptionalStringParam(params.vibe);
+    const bio = resolveOptionalStringParam(params.bio);
     const identityPath = path.join(workspaceDir, DEFAULT_IDENTITY_FILENAME);
-    const lines = [
-      "",
-      `- Name: ${safeName}`,
-      ...(emoji ? [`- Emoji: ${sanitizeIdentityLine(emoji)}`] : []),
-      ...(avatar ? [`- Avatar: ${sanitizeIdentityLine(avatar)}`] : []),
-      "",
-    ];
-    await fs.appendFile(identityPath, lines.join("\n"), "utf-8");
+    if (bio) {
+      const identityLines = [
+        `- **Name:** ${safeName}`,
+        ...(creature ? [`- **Creature:** ${sanitizeIdentityLine(creature)}`] : []),
+        ...(vibe ? [`- **Vibe:** ${sanitizeIdentityLine(vibe)}`] : []),
+        ...(emoji ? [`- **Emoji:** ${sanitizeIdentityLine(emoji)}`] : []),
+        ...(avatar ? [`- **Avatar:** ${sanitizeIdentityLine(avatar)}`] : []),
+        "",
+        "## Personality",
+        "",
+        bio.trim(),
+        "",
+      ];
+      await fs.writeFile(identityPath, identityLines.join("\n"), "utf-8");
+    } else {
+      const lines = [
+        "",
+        `- Name: ${safeName}`,
+        ...(emoji ? [`- Emoji: ${sanitizeIdentityLine(emoji)}`] : []),
+        ...(avatar ? [`- Avatar: ${sanitizeIdentityLine(avatar)}`] : []),
+        "",
+      ];
+      await fs.appendFile(identityPath, lines.join("\n"), "utf-8");
+    }
 
     respond(true, { ok: true, agentId, name: rawName, workspace: workspaceDir }, undefined);
   },

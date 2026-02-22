@@ -222,6 +222,7 @@ export async function refreshActiveTab(host: SettingsHost) {
     await Promise.all([
       loadAgents(host as unknown as OpenClawApp),
       loadTeams(host as unknown as OpenClawApp),
+      loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined),
     ]);
     await loadConfig(host as unknown as OpenClawApp);
     const agentIds = host.agentsList?.agents?.map((entry) => entry.id) ?? [];

@@ -50,6 +50,9 @@ export const AgentsCreateParamsSchema = Type.Object(
     workspace: NonEmptyString,
     emoji: Type.Optional(Type.String()),
     avatar: Type.Optional(Type.String()),
+    creature: Type.Optional(Type.String()),
+    vibe: Type.Optional(Type.String()),
+    bio: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
 );
