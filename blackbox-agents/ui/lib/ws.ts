@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import type { Agent, Message, Task, WsEvtFrame, WsFrame } from "./types";
+import type { Agent, Message, Task, WsFrame } from "./types";
 
 // ─── WS URL ───────────────────────────────────────────────────────────────────
 
@@ -78,11 +78,10 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else if (frame.type === "event") {
-        const evtFrame = frame;
-        const handlers = handlersRef.current.get(evtFrame.event);
+        const handlers = handlersRef.current.get(frame.event);
         if (handlers) {
           for (const h of handlers) {
-            h(evtFrame.payload);
+            h(frame.payload);
           }
         }
       }
@@ -142,16 +141,19 @@ export function useWs(): WsContextValue {
 // ─── Derived hooks ────────────────────────────────────────────────────────────
 
 export function useAgents(): { agents: Agent[]; loading: boolean; refetch: () => void } {
-  const { request, on } = useWs();
+  const { request, on, connected } = useWs();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(() => {
+    if (!connected) {
+      return;
+    }
     request<Agent[]>("agents.list")
       .then(setAgents)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [request]);
+  }, [request, connected]);
 
   useEffect(() => {
     refetch();
@@ -182,16 +184,19 @@ export function useTasks(agentId?: string): {
   loading: boolean;
   refetch: () => void;
 } {
-  const { request, on } = useWs();
+  const { request, on, connected } = useWs();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(() => {
+    if (!connected) {
+      return;
+    }
     request<Task[]>("tasks.list", agentId ? { agentId } : {})
       .then(setTasks)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [request, agentId]);
+  }, [request, agentId, connected]);
 
   useEffect(() => {
     refetch();
@@ -227,16 +232,19 @@ export function useTasks(agentId?: string): {
 }
 
 export function useMessages(agentId: string): { messages: Message[]; loading: boolean } {
-  const { request, on } = useWs();
+  const { request, on, connected } = useWs();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!connected) {
+      return;
+    }
     request<Message[]>("messages.list", { agentId })
       .then(setMessages)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [request, agentId]);
+  }, [request, agentId, connected]);
 
   useEffect(() => {
     const unsub = on("message.new", (payload) => {
