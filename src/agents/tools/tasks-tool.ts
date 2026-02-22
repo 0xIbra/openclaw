@@ -151,6 +151,7 @@ export function createTasksTool(): AnyAgentTool {
                   .filter(Boolean)
               : undefined,
             assignedAgentId: readStringParam(params, "assignedAgentId") || undefined,
+            teamId: readStringParam(params, "teamId") || undefined,
             maxAttempts:
               typeof params.maxAttempts === "number" ? Math.floor(params.maxAttempts) : undefined,
             relevantPaths: Array.isArray(params.relevantPaths)
@@ -188,6 +189,7 @@ export function createTasksTool(): AnyAgentTool {
                 .filter(Boolean)
             : undefined,
           assignedAgentId: readStringParam(params, "assignedAgentId", { trim: false }),
+          teamId: readStringParam(params, "teamId") || undefined,
           maxAttempts:
             typeof params.maxAttempts === "number" ? Math.floor(params.maxAttempts) : undefined,
           relevantPaths: Array.isArray(params.relevantPaths)
