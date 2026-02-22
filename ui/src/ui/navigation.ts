@@ -4,7 +4,17 @@ export const TAB_GROUPS = [
   { label: "Chat", tabs: ["chat"] },
   {
     label: "Control",
-    tabs: ["overview", "activity", "board", "channels", "instances", "sessions", "usage", "cron"],
+    tabs: [
+      "overview",
+      "activity",
+      "timeline",
+      "board",
+      "channels",
+      "instances",
+      "sessions",
+      "usage",
+      "cron",
+    ],
   },
   { label: "Agent", tabs: ["agents", "skills", "nodes"] },
   { label: "Settings", tabs: ["config", "debug", "logs"] },
@@ -14,6 +24,7 @@ export type Tab =
   | "agents"
   | "overview"
   | "activity"
+  | "timeline"
   | "board"
   | "channels"
   | "instances"
@@ -31,6 +42,7 @@ const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
   overview: "/overview",
   activity: "/activity",
+  timeline: "/timeline",
   board: "/board",
   channels: "/channels",
   instances: "/instances",
@@ -136,6 +148,8 @@ export function iconForTab(tab: Tab): IconName {
       return "barChart";
     case "activity":
       return "radio";
+    case "timeline":
+      return "scrollText";
     case "board":
       return "folder";
     case "channels":
@@ -171,6 +185,8 @@ export function titleForTab(tab: Tab) {
       return "Overview";
     case "activity":
       return "Activity";
+    case "timeline":
+      return "Timeline";
     case "board":
       return "Board";
     case "channels":
@@ -208,6 +224,8 @@ export function subtitleForTab(tab: Tab) {
       return "Gateway status, entry points, and a fast health read.";
     case "activity":
       return "Live runtime status for every lead and worker agent.";
+    case "timeline":
+      return "Full accountability — every thought, tool call, and result from every active agent.";
     case "board":
       return "Kanban view for projects and execution tasks.";
     case "channels":

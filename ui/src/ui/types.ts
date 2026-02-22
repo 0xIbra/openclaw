@@ -512,6 +512,43 @@ export type SessionsPreviewEntry = {
   items: SessionPreviewItem[];
 };
 
+export type TranscriptEntryType = "text" | "thinking" | "tool_call" | "tool_result";
+
+export type TranscriptEntry = {
+  idx: number;
+  role: string;
+  type: TranscriptEntryType;
+  text?: string;
+  thinking?: string;
+  toolName?: string;
+  toolId?: string;
+  input?: unknown;
+  toolUseId?: string;
+  content?: unknown;
+};
+
+export type AgentTranscriptResult = {
+  key: string;
+  entries: TranscriptEntry[];
+};
+
+export type TimelineEvent = {
+  id: string;
+  idx: number;
+  ts: number;
+  agentId: string;
+  sessionKey: string;
+  source: "live" | "transcript";
+  type: TranscriptEntryType;
+  text?: string;
+  thinking?: string;
+  toolName?: string;
+  toolId?: string;
+  input?: unknown;
+  toolUseId?: string;
+  content?: unknown;
+};
+
 export type TaskRuntimeStatusDto = {
   workers: TaskRuntimeWorkerDto[];
   leads: TaskRuntimeLeadDto[];

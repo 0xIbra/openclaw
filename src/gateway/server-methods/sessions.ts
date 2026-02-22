@@ -33,6 +33,7 @@ import {
   loadCombinedSessionStoreForGateway,
   loadSessionEntry,
   pruneLegacyStoreKeys,
+  readSessionMessages,
   readSessionPreviewItemsFromTranscript,
   resolveGatewaySessionStoreTarget,
   resolveSessionModelRef,
@@ -497,5 +498,94 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       },
       undefined,
     );
+  },
+  "sessions.transcript": ({ params, respond }) => {
+    const p = params;
+    const key = typeof p.key === "string" ? p.key.trim() : "";
+    if (!key) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "key required"));
+      return;
+    }
+    const limit =
+      typeof p.limit === "number" && Number.isFinite(p.limit) ? Math.max(1, p.limit) : 500;
+
+    const cfg = loadConfig();
+    try {
+      const storeTarget = resolveGatewaySessionStoreTarget({ cfg, key, scanLegacyKeys: false });
+      const store = loadSessionStore(storeTarget.storePath);
+      const target = resolveGatewaySessionStoreTarget({ cfg, key, store });
+      const entry = target.storeKeys.map((candidate) => store[candidate]).find(Boolean);
+      if (!entry?.sessionId) {
+        respond(true, { key, entries: [] }, undefined);
+        return;
+      }
+      const rawMessages = readSessionMessages(entry.sessionId, target.storePath, entry.sessionFile);
+      type TranscriptEntry = {
+        idx: number;
+        role: string;
+        type: string;
+        text?: string;
+        thinking?: string;
+        toolName?: string;
+        toolId?: string;
+        input?: unknown;
+        toolUseId?: string;
+        content?: unknown;
+      };
+      const entries: TranscriptEntry[] = [];
+      let idx = 0;
+      for (const raw of rawMessages) {
+        const msg = raw as { role?: string; content?: unknown };
+        const role = typeof msg.role === "string" ? msg.role : "other";
+        const content = msg.content;
+        if (typeof content === "string") {
+          if (content.trim()) {
+            entries.push({ idx: idx++, role, type: "text", text: content });
+          }
+        } else if (Array.isArray(content)) {
+          for (const block of content as Array<Record<string, unknown>>) {
+            if (!block || typeof block.type !== "string") {
+              continue;
+            }
+            if (block.type === "thinking") {
+              const thinking =
+                typeof block.thinking === "string"
+                  ? block.thinking
+                  : typeof block.text === "string"
+                    ? block.text
+                    : "";
+              if (thinking) {
+                entries.push({ idx: idx++, role, type: "thinking", thinking });
+              }
+            } else if (block.type === "text") {
+              const text = typeof block.text === "string" ? block.text : "";
+              if (text.trim()) {
+                entries.push({ idx: idx++, role, type: "text", text });
+              }
+            } else if (block.type === "tool_use") {
+              entries.push({
+                idx: idx++,
+                role,
+                type: "tool_call",
+                toolName: typeof block.name === "string" ? block.name : "",
+                toolId: typeof block.id === "string" ? block.id : "",
+                input: block.input,
+              });
+            } else if (block.type === "tool_result") {
+              entries.push({
+                idx: idx++,
+                role,
+                type: "tool_result",
+                toolUseId: typeof block.tool_use_id === "string" ? block.tool_use_id : "",
+                content: block.content,
+              });
+            }
+          }
+        }
+      }
+      respond(true, { key, entries: entries.slice(-limit) }, undefined);
+    } catch {
+      respond(true, { key, entries: [] }, undefined);
+    }
   },
 };

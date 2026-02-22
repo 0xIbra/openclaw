@@ -8,6 +8,8 @@ import {
   stopLogsPolling,
   startDebugPolling,
   stopDebugPolling,
+  startTimelinePolling,
+  stopTimelinePolling,
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import { loadActivityDetails } from "./controllers/activity.ts";
@@ -28,6 +30,7 @@ import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
 import { listPendingTaskReviews, loadRuntimeStatus, loadTasks } from "./controllers/tasks.ts";
 import { loadTeams } from "./controllers/teams.ts";
+import { loadTimeline } from "./controllers/timeline.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -171,6 +174,11 @@ export function setTab(host: SettingsHost, next: Tab) {
   } else {
     stopBoardRuntimePolling(host as unknown as Parameters<typeof stopBoardRuntimePolling>[0]);
   }
+  if (next === "timeline") {
+    startTimelinePolling(host as unknown as Parameters<typeof startTimelinePolling>[0]);
+  } else {
+    stopTimelinePolling(host as unknown as Parameters<typeof stopTimelinePolling>[0]);
+  }
   void refreshActiveTab(host);
   syncUrlWithTab(host, next, false);
 }
@@ -212,6 +220,10 @@ export async function refreshActiveTab(host: SettingsHost) {
       loadTasks(host as unknown as Parameters<typeof loadTasks>[0]),
     ]);
     await loadActivityDetails(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "timeline") {
+    await loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined);
+    await loadTimeline(host as unknown as Parameters<typeof loadTimeline>[0]);
   }
   if (host.tab === "board") {
     await loadProjects(host as unknown as Parameters<typeof loadProjects>[0]);
@@ -392,6 +404,11 @@ export function setTabFromRoute(host: SettingsHost, next: Tab) {
     startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
   } else {
     stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  }
+  if (next === "timeline") {
+    startTimelinePolling(host as unknown as Parameters<typeof startTimelinePolling>[0]);
+  } else {
+    stopTimelinePolling(host as unknown as Parameters<typeof stopTimelinePolling>[0]);
   }
   if (host.connected) {
     void refreshActiveTab(host);

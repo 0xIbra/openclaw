@@ -4,12 +4,14 @@ import { loadDebug } from "./controllers/debug.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadRuntimeStatus } from "./controllers/tasks.ts";
+import { loadTimeline } from "./controllers/timeline.ts";
 
 type PollingHost = {
   nodesPollInterval: number | null;
   logsPollInterval: number | null;
   debugPollInterval: number | null;
   boardRuntimePollInterval: number | null;
+  timelinePollInterval: number | null;
   tab: string;
 };
 
@@ -95,4 +97,26 @@ export function stopBoardRuntimePolling(host: PollingHost) {
   }
   clearInterval(host.boardRuntimePollInterval);
   host.boardRuntimePollInterval = null;
+}
+
+export function startTimelinePolling(host: PollingHost) {
+  if (host.timelinePollInterval != null) {
+    return;
+  }
+  host.timelinePollInterval = window.setInterval(() => {
+    if (host.tab !== "timeline") {
+      return;
+    }
+    void loadRuntimeStatus(host as unknown as OpenClawApp)
+      .catch(() => undefined)
+      .then(() => loadTimeline(host as unknown as OpenClawApp).catch(() => undefined));
+  }, 5_000);
+}
+
+export function stopTimelinePolling(host: PollingHost) {
+  if (host.timelinePollInterval == null) {
+    return;
+  }
+  clearInterval(host.timelinePollInterval);
+  host.timelinePollInterval = null;
 }

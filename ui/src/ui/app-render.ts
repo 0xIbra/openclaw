@@ -87,6 +87,7 @@ import { renderNodes } from "./views/nodes.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
+import { renderTimeline } from "./views/timeline.ts";
 
 const SUPPORTED_CRON_CHANNELS = new Set(["telegram", "discord"]);
 
@@ -314,6 +315,28 @@ export function renderApp(state: AppViewState) {
                     )
                     .finally(() => {
                       state.boardRuntimeLoading = false;
+                    });
+                },
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "timeline"
+            ? renderTimeline({
+                runtimeStatus: state.boardRuntimeStatus,
+                events: state.timelineEvents,
+                transcripts: state.timelineTranscripts,
+                loading: state.timelineLoading,
+                error: state.timelineError,
+                onRefresh: () => {
+                  state.timelineLoading = true;
+                  void import("./controllers/tasks.ts")
+                    .then((m) => m.loadRuntimeStatus(state).catch(() => undefined))
+                    .then(() => import("./controllers/timeline.ts"))
+                    .then((m) => m.loadTimeline(state).catch(() => undefined))
+                    .finally(() => {
+                      state.timelineLoading = false;
                     });
                 },
               })

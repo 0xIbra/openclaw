@@ -13,6 +13,7 @@ import type {
   AgentsListResult,
   AgentsFilesListResult,
   AgentIdentityResult,
+  AgentTranscriptResult,
   ChannelsStatusSnapshot,
   ConfigSnapshot,
   ConfigUiHints,
@@ -40,6 +41,7 @@ import type {
   TaskRuntimeStatusDto,
   TaskType,
   TeamsListResult,
+  TimelineEvent,
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
@@ -226,6 +228,10 @@ export type AppViewState = {
   boardRuntimeLoading: boolean;
   boardRuntimeError: string | null;
   activitySessionPreviews: Record<string, SessionsPreviewEntry>;
+  timelineTranscripts: Record<string, AgentTranscriptResult>;
+  timelineEvents: TimelineEvent[];
+  timelineLoading: boolean;
+  timelineError: string | null;
   teamsLoading: boolean;
   teamsList: TeamsListResult | null;
   teamsError: string | null;

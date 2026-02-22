@@ -14,6 +14,7 @@ import type {
   TaskRuntimeTeamDto,
   TeamDto,
   TeamMemberDto,
+  TimelineEvent,
 } from "./types.ts";
 import { CHAT_SESSIONS_ACTIVE_MINUTES, flushChatQueueForEvent } from "./app-chat.ts";
 import {
@@ -44,6 +45,7 @@ import {
   patchTaskFromEvent,
   patchTaskReviewFromEvent,
 } from "./controllers/tasks.ts";
+import { appendLiveTimelineEvent } from "./controllers/timeline.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
 
 type GatewayHost = {
@@ -83,6 +85,7 @@ type GatewayHost = {
   >;
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
   boardEscalations: TaskEscalationDto[];
+  timelineEvents: TimelineEvent[];
 };
 
 type SessionDefaultsSnapshot = {
@@ -227,10 +230,44 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     if (host.onboarding) {
       return;
     }
-    handleAgentEvent(
-      host as unknown as Parameters<typeof handleAgentEvent>[0],
-      evt.payload as AgentEventPayload | undefined,
-    );
+    const agentPayload = evt.payload as AgentEventPayload | undefined;
+    handleAgentEvent(host as unknown as Parameters<typeof handleAgentEvent>[0], agentPayload);
+    // Append to timeline for live accountability view
+    if (agentPayload && (agentPayload.stream === "assistant" || agentPayload.stream === "tool")) {
+      const sessionKey = agentPayload.sessionKey ?? "";
+      const agentId = extractAgentIdFromSessionKey(sessionKey) ?? agentPayload.runId;
+      const data = agentPayload.data;
+      if (agentPayload.stream === "assistant") {
+        const text = typeof data.text === "string" ? data.text : "";
+        if (text) {
+          appendLiveTimelineEvent(host, {
+            id: `${agentPayload.runId}:${agentPayload.seq}`,
+            idx: agentPayload.seq,
+            ts: agentPayload.ts,
+            agentId,
+            sessionKey,
+            source: "live",
+            type: "text",
+            text,
+          });
+        }
+      } else if (agentPayload.stream === "tool") {
+        const toolName = typeof data.toolName === "string" ? data.toolName : "";
+        if (toolName) {
+          appendLiveTimelineEvent(host, {
+            id: `${agentPayload.runId}:${agentPayload.seq}`,
+            idx: agentPayload.seq,
+            ts: agentPayload.ts,
+            agentId,
+            sessionKey,
+            source: "live",
+            type: "tool_call",
+            toolName,
+            input: data.input,
+          });
+        }
+      }
+    }
     return;
   }
 
@@ -416,6 +453,20 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
       host.execApprovalQueue = removeExecApproval(host.execApprovalQueue, resolved.id);
     }
   }
+}
+
+function extractAgentIdFromSessionKey(key: string): string | null {
+  // key format: "agent:{agentId}:task-runtime" or "agent:{agentId}:team-lead"
+  const parts = key.split(":");
+  if (parts[0] === "agent" && parts.length >= 2 && parts[1]) {
+    return parts[1];
+  }
+  // also handle dot-separated: "agent.{agentId}.task-runtime"
+  const dotParts = key.split(".");
+  if (dotParts[0] === "agent" && dotParts.length >= 2 && dotParts[1]) {
+    return dotParts[1];
+  }
+  return null;
 }
 
 export function applySnapshot(host: GatewayHost, hello: GatewayHelloOk) {

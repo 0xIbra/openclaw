@@ -329,6 +329,10 @@ export class OpenClawApp extends LitElement {
   @state() boardRuntimeLoading = false;
   @state() boardRuntimeError: string | null = null;
   @state() activitySessionPreviews: Record<string, import("./types.ts").SessionsPreviewEntry> = {};
+  @state() timelineTranscripts: Record<string, import("./types.ts").AgentTranscriptResult> = {};
+  @state() timelineEvents: import("./types.ts").TimelineEvent[] = [];
+  @state() timelineLoading = false;
+  @state() timelineError: string | null = null;
   @state() teamsLoading = false;
   @state() teamsList: TeamsListResult | null = null;
   @state() teamsError: string | null = null;
@@ -397,6 +401,7 @@ export class OpenClawApp extends LitElement {
   private logsPollInterval: number | null = null;
   private debugPollInterval: number | null = null;
   boardRuntimePollInterval: number | null = null;
+  timelinePollInterval: number | null = null;
   private logsScrollFrame: number | null = null;
   private toolStreamById = new Map<string, ToolStreamEntry>();
   private toolStreamOrder: string[] = [];
