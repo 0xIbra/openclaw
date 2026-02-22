@@ -2,6 +2,8 @@ packages:
   - .
   - ui
   - ui-v2
+  - blackbox-agents
+  - blackbox-agents/*
   - packages/*
   - extensions/*
 

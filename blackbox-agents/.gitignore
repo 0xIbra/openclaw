@@ -1,0 +1,4 @@
+node_modules/
+ui/.next/
+server/dist/
+*.sqlite

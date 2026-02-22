@@ -1,0 +1,13 @@
+{
+  "name": "blackbox-agents-root",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter blackbox-server build && pnpm --filter blackbox-ui build",
+    "dev": "concurrently --names 'server,ui' --prefix-colors 'cyan,magenta' 'pnpm --filter blackbox-server dev' 'pnpm --filter blackbox-ui dev'",
+    "server": "pnpm --filter blackbox-server dev",
+    "ui": "pnpm --filter blackbox-ui dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
