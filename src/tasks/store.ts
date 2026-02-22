@@ -767,12 +767,22 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
   }
 
   function getActiveTeamByName(name: string): TeamRecord | null {
-    const row = db
+    // Exact case-insensitive match first
+    const exact = db
       .prepare(
         `SELECT * FROM teams WHERE lower(name) = lower(?) AND archived_at_ms IS NULL LIMIT 1`,
       )
       .get(name) as TeamRow | undefined;
-    return row ? mapTeamRow(row) : null;
+    if (exact) {
+      return mapTeamRow(exact);
+    }
+    // Contains match fallback (handles "the Morpheus team", partial names, etc.)
+    const partial = db
+      .prepare(
+        `SELECT * FROM teams WHERE instr(lower(name), lower(?)) > 0 AND archived_at_ms IS NULL ORDER BY length(name) ASC LIMIT 1`,
+      )
+      .get(name) as TeamRow | undefined;
+    return partial ? mapTeamRow(partial) : null;
   }
 
   function listTeams(filters?: TeamListFilters): TeamRecord[] {

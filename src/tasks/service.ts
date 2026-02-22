@@ -277,7 +277,20 @@ export class TaskService {
     if (!normalizedName) {
       throw new TaskServiceError("invalid_input", "team name is required");
     }
-    return this.store.getActiveTeamByName(normalizedName);
+    // Try exact match first
+    const exact = this.store.getActiveTeamByName(normalizedName);
+    if (exact) {
+      return exact;
+    }
+    // Strip common prefixes (e.g. "Team Morpheus" → "Morpheus") and retry
+    const stripped = normalizedName.replace(/^team\s+/i, "").trim();
+    if (stripped && stripped.toLowerCase() !== normalizedName.toLowerCase()) {
+      const fallback = this.store.getActiveTeamByName(stripped);
+      if (fallback) {
+        return fallback;
+      }
+    }
+    return null;
   }
 
   createTeam(input: TeamCreateInput): TeamRecord {
