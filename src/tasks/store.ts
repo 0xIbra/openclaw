@@ -1743,6 +1743,11 @@ export function createTaskStore(params?: { db?: TaskDatabase; dbPath?: string })
         leaseExpiresAtMs,
       );
 
+      // Transition task to 'assigned' so startAttempt preconditions pass
+      db.prepare(
+        `UPDATE tasks SET status = 'assigned', assigned_agent_id = ?, updated_at_ms = ? WHERE id = ? AND status = 'backlog'`,
+      ).run(input.agentId, nowMs, candidate.id);
+
       if (input.teamId !== undefined) {
         db.prepare(`UPDATE tasks SET team_id = ?, updated_at_ms = ? WHERE id = ?`).run(
           input.teamId,

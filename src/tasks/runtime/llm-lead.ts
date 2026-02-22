@@ -216,7 +216,7 @@ export function createLLMTaskLead(options: TaskLeadOptions): TaskLead {
   };
 
   // Stable session so the LLM retains context across turns
-  const sessionId = `lead:${options.teamId}:${options.leadAgentId}`;
+  const sessionId = `lead.${options.teamId}.${options.leadAgentId}`;
 
   const runLoop = async (signal: AbortSignal) => {
     updateStatus({ state: "idle", lastError: null }, "started");
