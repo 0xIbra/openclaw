@@ -10,6 +10,7 @@ import {
   stopDebugPolling,
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
+import { loadActivityDetails } from "./controllers/activity.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
@@ -208,7 +209,9 @@ export async function refreshActiveTab(host: SettingsHost) {
     await Promise.all([
       loadAgents(host as unknown as OpenClawApp),
       loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined),
+      loadTasks(host as unknown as Parameters<typeof loadTasks>[0]),
     ]);
+    await loadActivityDetails(host as unknown as OpenClawApp);
   }
   if (host.tab === "board") {
     await loadProjects(host as unknown as Parameters<typeof loadProjects>[0]);

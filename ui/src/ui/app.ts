@@ -328,6 +328,7 @@ export class OpenClawApp extends LitElement {
   @state() boardRuntimeStatus: TaskRuntimeStatusDto | null = null;
   @state() boardRuntimeLoading = false;
   @state() boardRuntimeError: string | null = null;
+  @state() activitySessionPreviews: Record<string, import("./types.ts").SessionsPreviewEntry> = {};
   @state() teamsLoading = false;
   @state() teamsList: TeamsListResult | null = null;
   @state() teamsError: string | null = null;

@@ -501,6 +501,17 @@ export type TaskRuntimeTeamDto = {
   memberAgentIds: string[];
 };
 
+export type SessionPreviewItem = {
+  role: "user" | "assistant" | "tool" | "system" | "other";
+  text: string;
+};
+
+export type SessionsPreviewEntry = {
+  key: string;
+  status: "ok" | "empty" | "missing" | "error";
+  items: SessionPreviewItem[];
+};
+
 export type TaskRuntimeStatusDto = {
   workers: TaskRuntimeWorkerDto[];
   leads: TaskRuntimeLeadDto[];

@@ -1,4 +1,5 @@
 import type { OpenClawApp } from "./app.ts";
+import { loadActivityDetails } from "./controllers/activity.ts";
 import { loadDebug } from "./controllers/debug.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
@@ -78,8 +79,14 @@ export function startBoardRuntimePolling(host: PollingHost) {
     if (host.tab !== "board" && host.tab !== "activity") {
       return;
     }
-    void loadRuntimeStatus(host as unknown as OpenClawApp).catch(() => undefined);
-  }, 8_000);
+    void loadRuntimeStatus(host as unknown as OpenClawApp)
+      .catch(() => undefined)
+      .then(() => {
+        if (host.tab === "activity") {
+          void loadActivityDetails(host as unknown as OpenClawApp);
+        }
+      });
+  }, 6_000);
 }
 
 export function stopBoardRuntimePolling(host: PollingHost) {

@@ -298,6 +298,8 @@ export function renderApp(state: AppViewState) {
                 runtimeError: state.boardRuntimeError,
                 agentsList: state.agentsList,
                 tasks: state.boardTasks,
+                attemptsByTaskId: state.boardTaskAttemptsByTaskId,
+                sessionPreviews: state.activitySessionPreviews,
                 onRefresh: () => {
                   state.boardRuntimeLoading = true;
                   void Promise.all([
@@ -305,9 +307,14 @@ export function renderApp(state: AppViewState) {
                     loadRuntimeStatus(state).catch((err: unknown) => {
                       state.boardRuntimeError = String(err);
                     }),
-                  ]).finally(() => {
-                    state.boardRuntimeLoading = false;
-                  });
+                    loadTasks(state),
+                  ])
+                    .then(() =>
+                      import("./controllers/activity.ts").then((m) => m.loadActivityDetails(state)),
+                    )
+                    .finally(() => {
+                      state.boardRuntimeLoading = false;
+                    });
                 },
               })
             : nothing

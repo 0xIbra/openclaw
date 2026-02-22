@@ -23,6 +23,7 @@ import type {
   LogEntry,
   LogLevel,
   PresenceEntry,
+  SessionsPreviewEntry,
   SessionsUsageResult,
   CostUsageSummary,
   ProjectDto,
@@ -224,6 +225,7 @@ export type AppViewState = {
   boardRuntimeStatus: TaskRuntimeStatusDto | null;
   boardRuntimeLoading: boolean;
   boardRuntimeError: string | null;
+  activitySessionPreviews: Record<string, SessionsPreviewEntry>;
   teamsLoading: boolean;
   teamsList: TeamsListResult | null;
   teamsError: string | null;
