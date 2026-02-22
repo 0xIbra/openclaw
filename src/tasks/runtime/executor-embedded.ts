@@ -5,6 +5,7 @@ import type { TaskService } from "../service.js";
 import type { ProjectRecord } from "../types.js";
 import type { TaskExecutor, TaskExecutionInput } from "./types.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionTranscriptPath } from "../../config/sessions.js";
@@ -136,6 +137,7 @@ export function createEmbeddedTaskExecutor(options: EmbeddedTaskExecutorOptions)
         busContext,
         memoryContext,
       });
+      const modelRef = resolveDefaultModelForAgent({ cfg: config, agentId: options.agentId });
 
       try {
         const result = await runEmbeddedPiAgent({
@@ -145,6 +147,8 @@ export function createEmbeddedTaskExecutor(options: EmbeddedTaskExecutorOptions)
           sessionFile,
           workspaceDir,
           config,
+          provider: modelRef.provider,
+          model: modelRef.model,
           prompt,
           timeoutMs: options.timeoutMs ?? TASK_WORKER_EXECUTION_TIMEOUT_MS,
           runId,

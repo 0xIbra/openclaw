@@ -55,6 +55,11 @@ export function renderActivity(props: ActivityProps) {
     taskById.set(t.id, t);
   }
 
+  const teamNameById = new Map<string, string>();
+  for (const team of runtimeStatus?.teams ?? []) {
+    teamNameById.set(team.teamId, team.teamName);
+  }
+
   const lastUpdated = runtimeStatus?.updatedAtMs
     ? formatRelativeTimestamp(runtimeStatus.updatedAtMs)
     : null;
@@ -182,7 +187,7 @@ export function renderActivity(props: ActivityProps) {
                     ${
                       worker.teamIds.length > 0
                         ? html`<div class="activity-card-meta">
-                          Teams: ${worker.teamIds.join(", ")}
+                          Teams: ${worker.teamIds.map((id) => teamNameById.get(id) ?? id).join(", ")}
                         </div>`
                         : nothing
                     }

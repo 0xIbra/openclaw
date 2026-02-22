@@ -1,6 +1,7 @@
 import type { TaskRecord, TaskQuestionThreadRecord } from "../types.js";
 import type { TaskLead, TaskLeadEvent, TaskLeadOptions, TaskLeadStatus } from "./types.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
+import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionTranscriptPath } from "../../config/sessions.js";
@@ -241,6 +242,7 @@ export function createLLMTaskLead(options: TaskLeadOptions): TaskLead {
         const sessionFile = resolveSessionTranscriptPath(sessionId, options.leadAgentId);
         const workspaceDir = resolveAgentWorkspaceDir(cfg, options.leadAgentId);
         const prompt = buildLeadTurnPrompt(options, snapshot);
+        const modelRef = resolveDefaultModelForAgent({ cfg, agentId: options.leadAgentId });
 
         await runEmbeddedPiAgent({
           sessionId,
@@ -252,6 +254,8 @@ export function createLLMTaskLead(options: TaskLeadOptions): TaskLead {
           sessionFile,
           workspaceDir,
           config: cfg,
+          provider: modelRef.provider,
+          model: modelRef.model,
           prompt,
           extraSystemPrompt: LEAD_SYSTEM_PROMPT,
           timeoutMs: LEAD_TURN_TIMEOUT_MS,
